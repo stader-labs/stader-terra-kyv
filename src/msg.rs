@@ -23,7 +23,7 @@ pub enum QueryMsg {
     GetHistoryByTime {
         timestamp: u64,
     },
-    GetCurrentState {},
+    GetState {},
     GetAllAprsByInteral {
         timestamp1: u64,
         timestamp2: u64,

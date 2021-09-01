@@ -13,7 +13,7 @@ const timestamps2 = [1630508284, 1630508391];
 const run = async () => {
   /*
     #Query Get the current state/config of the contract
-    await kyvContract.query.getCurrentState().then(console.log, console.log);
+    await kyvContract.query.getState().then(console.log, console.log);
 
     #Query Compute Apr a validator for the given time interval
     await kyvContract.query

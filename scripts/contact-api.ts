@@ -49,7 +49,7 @@ const getHistoryByTime = async (timestamp: number) => {
   })) as ValidatorMetric[];
 };
 
-const getCurrentState = async () => {
+const getState = async () => {
   return await queryApi({ get_current_state: {} });
 };
 
@@ -74,7 +74,7 @@ async function computeValidatorAPR(
 
 const kyvContractApi = {
   query: {
-    getCurrentState,
+    getState,
     getHistoryByTime,
     computeAllValidatorsAPRs,
     computeValidatorAPR,
