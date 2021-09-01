@@ -30,7 +30,4 @@ pub struct ValidatorMetrics {
 pub const METRICS_HISTORY: Map<U64Key, Vec<ValidatorMetrics>> =
     Map::new("validator_metrics_history");
 
-// pub const METRICS_HISTORY: Map<Addr, Vec<ValidatorMetrics>> =
-//     Map::new("validator_metrics_history");
-
 pub const STATE: Item<State> = Item::new("state");
