@@ -20,9 +20,19 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetHistoryByTime { timestamp: u64 },
+    GetHistoryByTime {
+        timestamp: u64,
+    },
     GetCurrentState {},
-    GetAllAprsByInteral { timestamp1: u64, timestamp2: u64 },
+    GetAllAprsByInteral {
+        timestamp1: u64,
+        timestamp2: u64,
+    },
+    GetAprByValidator {
+        timestamp1: u64,
+        timestamp2: u64,
+        addr: Addr,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -25,6 +25,5 @@ pub enum ContractError {
     NoDelegationFound { manager: Addr, validator: Addr },
 
     #[error("Invalid timestamps provided")]
-    InvalidTimestamps {msg: String },
-
+    InvalidTimestamps { msg: String },
 }

@@ -4,7 +4,10 @@ use crate::state::{State, ValidatorMetrics, ValidatorUpdateTimings, METRICS_HIST
 use cosmwasm_bignumber::Decimal256;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StakingMsg, StdError, StdResult, Storage, to_binary};
+use cosmwasm_std::{
+    to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StakingMsg, StdError,
+    StdResult, Storage,
+};
 use cosmwasm_std::{Decimal, FullDelegation, Uint128};
 use cw_storage_plus::U64Key;
 use std::collections::HashMap;
@@ -69,11 +72,51 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             timestamp1,
             timestamp2,
         } => to_binary(&query_all_validators_aprs(deps, timestamp1, timestamp2)?),
+        QueryMsg::GetAprByValidator {
+            timestamp1,
+            timestamp2,
+            addr,
+        } => to_binary(&query_validator_apr(deps, timestamp1, timestamp2, addr)?),
     }
 }
 
+fn query_validator_apr(
+    deps: Deps,
+    timestamp1: u64,
+    timestamp2: u64,
+    addr: Addr,
+) -> StdResult<ValidatorAprResponse> {
+    if timestamp1.eq(&timestamp2) {
+        return Err(StdError::GenericErr {
+            msg: "timestamp1 and timestamp2 cannot be the same".to_string(),
+        });
+    }
+
+    let history1_map = convert_validator_metrics_to_map(
+        METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp1))?,
+    );
+
+    let history2_map = convert_validator_metrics_to_map(
+        METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp2))?,
+    );
+
+    let h1_opt = history1_map.get(&addr);
+    let h2_opt = history2_map.get(&addr);
+
+    if h1_opt.is_none() || h2_opt.is_none() {
+        return Err(StdError::GenericErr {
+            msg: "Validator does'nt have metrics recorded for all the given times".to_string(),
+        });
+    }
+
+    return Ok(ValidatorAprResponse {
+        addr,
+        apr: compute_apr(h1_opt.unwrap(), h2_opt.unwrap(), timestamp2 - timestamp1),
+    });
+}
+
 fn convert_validator_metrics_to_map(
-    metrics:  Vec<ValidatorMetrics>,
+    metrics: Vec<ValidatorMetrics>,
 ) -> HashMap<Addr, ValidatorMetrics> {
     let mut map: HashMap<Addr, ValidatorMetrics> = HashMap::new();
     for metric in metrics {
@@ -87,9 +130,10 @@ fn query_all_validators_aprs(
     timestamp1: u64,
     timestamp2: u64,
 ) -> StdResult<Vec<ValidatorAprResponse>> {
-
     if timestamp1.eq(&timestamp2) {
-        return Err(StdError::GenericErr { msg: "timestamp1 and timestamp2 cannot be the same".to_string()})
+        return Err(StdError::GenericErr {
+            msg: "timestamp1 and timestamp2 cannot be the same".to_string(),
+        });
     }
 
     let mut response: Vec<ValidatorAprResponse> = vec![];
