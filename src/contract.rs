@@ -92,16 +92,15 @@ fn query_validator_apr(
         });
     }
 
-    let history1_map = convert_validator_metrics_to_map(
-        METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp1))?,
-    );
+    let h1_opt = METRICS_HISTORY
+        .load(deps.storage, U64Key::new(timestamp1))?
+        .into_iter()
+        .find(|history| history.addr.eq(&addr));
 
-    let history2_map = convert_validator_metrics_to_map(
-        METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp2))?,
-    );
-
-    let h1_opt = history1_map.get(&addr);
-    let h2_opt = history2_map.get(&addr);
+    let h2_opt = METRICS_HISTORY
+        .load(deps.storage, U64Key::new(timestamp2))?
+        .into_iter()
+        .find(|history| history.addr.eq(&addr));
 
     if h1_opt.is_none() || h2_opt.is_none() {
         return Err(StdError::GenericErr {
@@ -111,7 +110,7 @@ fn query_validator_apr(
 
     return Ok(ValidatorAprResponse {
         addr,
-        apr: compute_apr(h1_opt.unwrap(), h2_opt.unwrap(), timestamp2 - timestamp1),
+        apr: compute_apr(&h1_opt.unwrap(), &h2_opt.unwrap(), timestamp2 - timestamp1),
     });
 }
 
