@@ -1,20 +1,10 @@
-import {
-  LCDClient,
-  getContractAddress,
-  MsgExecuteContract,
-  Coin,
-  MsgStoreCode,
-  MsgInstantiateContract,
-  getCodeId,
-  isTxError,
-} from "@terra-money/terra.js";
+import { MsgStoreCode, getCodeId, isTxError } from "@terra-money/terra.js";
 import { client, wallet } from "./clientAndWallet";
 
 const fs = require("fs");
 
 async function uploadContract(): Promise<string> {
-  const filepath = __dirname + "/../artifacts/stader-terra-kyv.wasm";
-
+  const filepath = __dirname + "/../artifacts/stader_terra_kyv.wasm";
   const storeCode = new MsgStoreCode(
     wallet.key.accAddress,
     fs.readFileSync(filepath).toString("base64")

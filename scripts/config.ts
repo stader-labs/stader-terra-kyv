@@ -1,14 +1,5 @@
-// stake-max
-// export const contractAddress = "terra1a393ydd6l9e2mtda5k4r57l8g6adeu7jy44f3s";
-// stake-easy
-// export const contractAddress = "terra1t87a5xm2mpf33wc9jrnc00ezdmmdj8azgyk4rt";
-// export const contractAddress = "terra1a8a2kgmm3vqamqrljc9d4lzjnnm8gx765rxwpy";  // stake-easy devnet
-export const contractAddress = "terra1fr4rzvq4xrdy080cqcvxhzmtph0pzavcejejh7"; // stake-max devent
-// test-token airdrop contract
-// export const contractAddress = "terra18hd322kjzl29pclr93kj4ydq6y2y8z43yzfjdz";
-// stader-token airdrop contract
-// export const contractAddress = "terra1st54dpyjs0qh6r6572xfnp5xu70l32g9grsw4j"
-// export const contractAddress = "terra1a393ydd6l9e2mtda5k4r57l8g6adeu7jy44f3s"
+// export const contractAddress = "terra1fr4rzvq4xrdy080cqcvxhzmtph0pzavcejejh7"; // KYV Version 0.0.1
+export const contractAddress = "terra1wa3t5m8c05s2ndu22xp2s39jkrm3h0k7h2stq3"; // KYV Version 0.0.2
 
 // TODO: chappie: mnemonic_keys for prod will be from env vars
 // the wallets/mnemonic_keys in prod must not hold more than 10 luna at any given point of time
