@@ -1,5 +1,6 @@
 // export const contractAddress = "terra1fr4rzvq4xrdy080cqcvxhzmtph0pzavcejejh7"; // KYV Version 0.0.1
-export const contractAddress = "terra1wa3t5m8c05s2ndu22xp2s39jkrm3h0k7h2stq3"; // KYV Version 0.0.2
+// export const contractAddress = "terra1wa3t5m8c05s2ndu22xp2s39jkrm3h0k7h2stq3"; // KYV Version 0.0.2
+export const contractAddress = "terra128el6esjnu363kt33fnggfrmy80340dqalejdr"; // KYV Version 0.0.3
 
 // TODO: chappie: mnemonic_keys for prod will be from env vars
 // the wallets/mnemonic_keys in prod must not hold more than 10 luna at any given point of time

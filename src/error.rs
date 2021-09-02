@@ -19,7 +19,7 @@ pub enum ContractError {
     NoFundsFound {},
 
     #[error("In sufficient funds for this action")]
-    NotMatchingFunds {},
+    InsufficientFunds {},
 
     #[error("Something went wrong while getting the delegation??")]
     NoDelegationFound { manager: Addr, validator: Addr },

@@ -13,7 +13,7 @@ async function initiateContract(codeId: number): Promise<string> {
     {
       vault_denom: "uluna",
       amount_to_stake_per_validator: "10000000",
-      max_records_to_update_per_run: 10,
+      batch_size: 10,
     }, // InitMsg
     { uluna: 10000000 } // init coins
   );

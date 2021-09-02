@@ -11,7 +11,7 @@ pub struct State {
     pub manager: Addr,
     pub amount_to_stake_per_validator: Uint128,
     pub validator_update_timings: Vec<ValidatorUpdateTimings>,
-    pub max_records_to_update_per_run: u32,
+    pub batch_size: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -25,6 +25,8 @@ pub struct ValidatorMetrics {
     pub addr: Addr,                // Validator Address
     pub rewards: Decimal,          // these are cummulative rewards
     pub delegated_amount: Uint128, // For tracking the amount delegated (With slashing)
+    pub commission: Decimal,
+    pub max_commission: Decimal,
 }
 
 pub const METRICS_HISTORY: Map<U64Key, Vec<ValidatorMetrics>> =

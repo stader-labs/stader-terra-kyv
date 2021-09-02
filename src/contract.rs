@@ -1,14 +1,16 @@
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ValidatorAprResponse};
 use crate::state::{State, ValidatorMetrics, ValidatorUpdateTimings, METRICS_HISTORY, STATE};
-use cosmwasm_bignumber::Decimal256;
+use crate::util::{
+    compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
+};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StakingMsg, StdError,
     StdResult, Storage,
 };
-use cosmwasm_std::{Decimal, FullDelegation, Uint128};
+use cosmwasm_std::{Decimal, FullDelegation};
 use cw_storage_plus::U64Key;
 use std::collections::HashMap;
 use terra_cosmwasm::TerraQuerier;
@@ -26,7 +28,7 @@ pub fn instantiate(
         vault_denom: msg.vault_denom.clone(),
         amount_to_stake_per_validator: msg.amount_to_stake_per_validator,
         validator_update_timings: vec![],
-        max_records_to_update_per_run: msg.max_records_to_update_per_run,
+        batch_size: msg.batch_size,
     };
 
     STATE.save(deps.storage, &state)?;
@@ -55,9 +57,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::RecordMetrics { timestamp } => record_validator_metrics(deps, env, timestamp),
         ExecuteMsg::AddValidator { addr } => add_validator(deps, env, info, addr),
-        ExecuteMsg::UpdateRecordsToUpdatePerRun { no } => {
-            update_records_to_update_per_run(deps, no)
-        }
+        ExecuteMsg::UpdateConfig { batch_size } => update_config(deps, batch_size),
     }
 }
 
@@ -65,10 +65,10 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetState {} => to_binary(&query_state(deps)?),
-        QueryMsg::GetHistoryByTime { timestamp } => {
-            to_binary(&query_validator_history(deps, timestamp)?)
+        QueryMsg::GetAllValidatorMetricsByTime { timestamp } => {
+            to_binary(&query_all_validators_metrics(deps, timestamp)?)
         }
-        QueryMsg::GetAllAprsByInteral {
+        QueryMsg::GetAllAprsByInterval {
             timestamp1,
             timestamp2,
         } => to_binary(&query_all_validators_aprs(deps, timestamp1, timestamp2)?),
@@ -77,6 +77,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             timestamp2,
             addr,
         } => to_binary(&query_validator_apr(deps, timestamp1, timestamp2, addr)?),
+        QueryMsg::GetValidatorMetricsByTime { addr, timestamp } => {
+            to_binary(&query_validator_metrics(deps, addr, timestamp)?)
+        }
     }
 }
 
@@ -86,9 +89,9 @@ fn query_validator_apr(
     timestamp2: u64,
     addr: Addr,
 ) -> StdResult<ValidatorAprResponse> {
-    if timestamp1.eq(&timestamp2) {
+    if timestamp1.ge(&timestamp2) {
         return Err(StdError::GenericErr {
-            msg: "timestamp1 and timestamp2 cannot be the same".to_string(),
+            msg: "timestamp1 cannot be greater than or equal to timestamp2".to_string(),
         });
     }
 
@@ -129,9 +132,9 @@ fn query_all_validators_aprs(
     timestamp1: u64,
     timestamp2: u64,
 ) -> StdResult<Vec<ValidatorAprResponse>> {
-    if timestamp1.eq(&timestamp2) {
+    if timestamp1.ge(&timestamp2) {
         return Err(StdError::GenericErr {
-            msg: "timestamp1 and timestamp2 cannot be the same".to_string(),
+            msg: "timestamp1 cannot be greater than or equal to timestamp2".to_string(),
         });
     }
 
@@ -154,12 +157,12 @@ fn query_all_validators_aprs(
     Ok(response)
 }
 
-fn update_records_to_update_per_run(deps: DepsMut, no: u32) -> Result<Response, ContractError> {
+fn update_config(deps: DepsMut, batch_size: u32) -> Result<Response, ContractError> {
     STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.max_records_to_update_per_run = no;
+        s.batch_size = batch_size;
         Ok(s)
     })?;
-    Ok(Response::new().add_attribute("method", "update_records_to_update_per_run"))
+    Ok(Response::new().add_attribute("method", "update_config"))
 }
 
 fn add_validator(
@@ -200,8 +203,8 @@ fn add_validator(
         return Err(ContractError::NoFundsFound {});
     }
 
-    if !funds.unwrap().amount.eq(&amount_to_stake_per_validator) {
-        return Err(ContractError::NotMatchingFunds {});
+    if funds.unwrap().amount.lt(&amount_to_stake_per_validator) {
+        return Err(ContractError::InsufficientFunds {});
     }
 
     let msg = StakingMsg::Delegate {
@@ -234,11 +237,8 @@ pub fn record_validator_metrics(
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
 
-    let validators_to_record = update_and_get_validators_to_record(
-        deps.storage,
-        state.max_records_to_update_per_run,
-        timestamp,
-    )?;
+    let validators_to_record =
+        update_and_get_validators_to_record(deps.storage, state.batch_size, timestamp)?;
 
     if validators_to_record.is_empty() {
         return Ok(Response::new()
@@ -302,6 +302,8 @@ fn compute_current_metrics(
             .querier
             .query_delegation(&env.contract.address, validator_addr)?;
 
+        let validator = deps.querier.query_validator(validator_addr)?.unwrap();
+
         if delegation_opt.is_some() {
             let delegation = delegation_opt.unwrap();
             let current_rewards = get_total_rewards_in_vault_denom(
@@ -313,10 +315,13 @@ fn compute_current_metrics(
 
             // This is the new Delegated amount after slashing Ex: (10 => 9.8 etc.,)
             let current_delegated_amount = delegation.amount.amount.clone();
+
             current_metrics.push(ValidatorMetrics {
                 addr: validator_addr.clone(),
                 rewards: current_rewards,
                 delegated_amount: current_delegated_amount,
+                commission: validator.commission,
+                max_commission: validator.max_commission,
             });
         } else {
             // TODO: You should take a look at - Validator timings are already updated above
@@ -407,7 +412,6 @@ fn convert_amount_to_valut_denom(coin: &Coin, exchange_rate: Decimal) -> Decimal
     amount_in_vault_denom
 }
 
-// Refactor to a helper
 fn query_exchange_rate(
     querier: &TerraQuerier,
     vault_denom: &String,
@@ -432,54 +436,26 @@ fn query_state(deps: Deps) -> StdResult<State> {
     Ok(state)
 }
 
-fn query_validator_history(deps: Deps, timestamp: u64) -> StdResult<Vec<ValidatorMetrics>> {
+fn query_all_validators_metrics(deps: Deps, timestamp: u64) -> StdResult<Vec<ValidatorMetrics>> {
     METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp))
 }
 
-// TODO: Reuse from an util
-pub fn decimal_summation_in_256(a: Decimal, b: Decimal) -> Decimal {
-    let a_u256: Decimal256 = a.into();
-    let b_u256: Decimal256 = b.into();
-    let c_u256: Decimal = (b_u256 + a_u256).into();
-    c_u256
-}
+fn query_validator_metrics(deps: Deps, addr: Addr, timestamp: u64) -> StdResult<ValidatorMetrics> {
+    let metrics = METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp))?;
 
-pub fn decimal_subtraction_in_256(a: Decimal, b: Decimal) -> Decimal {
-    let a_u256: Decimal256 = a.into();
-    let b_u256: Decimal256 = b.into();
-    let c_u256: Decimal = (a_u256 - b_u256).into();
-    c_u256
-}
-
-pub fn decimal_multiplication_in_256(a: Decimal, b: Decimal) -> Decimal {
-    let a_u256: Decimal256 = a.into();
-    let b_u256: Decimal256 = b.into();
-    let c_u256: Decimal = (b_u256 * a_u256).into();
-    c_u256
-}
-
-pub fn decimal_division_in_256(a: Decimal, b: Decimal) -> Decimal {
-    let a_u256: Decimal256 = a.into();
-    let b_u256: Decimal256 = b.into();
-    let c_u256: Decimal = (a_u256 / b_u256).into();
-    c_u256
-}
-
-pub fn uint128_to_decimal(num: Uint128) -> Decimal {
-    let numerator: u128 = num.into();
-    Decimal::from_ratio(numerator, 1_u128)
-}
-
-pub fn u64_to_decimal(num: u64) -> Decimal {
-    let numerator: u128 = num.into();
-    Decimal::from_ratio(numerator, 1_u128)
+    match metrics.into_iter().find(|metric| metric.addr.eq(&addr)) {
+        Some(value) => Ok(value),
+        None => Err(StdError::GenericErr {
+            msg: "No metrics found for given validator and timestamp".to_string(),
+        }),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, /* from_binary */};
+    use cosmwasm_std::{coins, Uint128};
 
     #[test]
     fn easy_flow() {
@@ -488,7 +464,7 @@ mod tests {
         let msg = InstantiateMsg {
             amount_to_stake_per_validator: Uint128::new(10),
             vault_denom: "luna".to_string(),
-            max_records_to_update_per_run: 10,
+            batch_size: 10,
         };
         let info = mock_info("creator", &coins(2, "token"));
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -496,24 +472,4 @@ mod tests {
         // Add Validator
         // Invoke Record metrics here
     }
-}
-
-// function computeAPR(h1: ValidatorMetric, h2: ValidatorMetric) {
-//     const numerator = (+h2.rewards - +h1.rewards) * (365 * 86400) * 100;
-//     const denominator = +h2.delegated_amount * (h2.timestamp - h1.timestamp);
-//     return (numerator / denominator).toFixed(3) + "%";
-//   }
-
-fn compute_apr(h1: &ValidatorMetrics, h2: &ValidatorMetrics, time_diff_in_seconds: u64) -> Decimal {
-    let numerator = decimal_multiplication_in_256(
-        decimal_subtraction_in_256(h2.rewards, h1.rewards),
-        u64_to_decimal(3153600000), // (365 * 86400) * 100 => (365 * 86400) = Seconds in an year, 100 = percentage
-    );
-
-    let denominator = decimal_multiplication_in_256(
-        uint128_to_decimal(h2.delegated_amount),
-        u64_to_decimal(time_diff_in_seconds),
-    );
-
-    decimal_division_in_256(numerator, denominator)
 }

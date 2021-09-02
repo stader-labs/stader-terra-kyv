@@ -28,8 +28,8 @@ const execApi = async (execMsgs: any[], amount: number) => {
   return await client.tx.broadcast(executeTx);
 };
 
-const updateRecordsToUpdatePerRun = async (no: number) => {
-  return await execApi([{ update_records_to_update_per_run: { no } }], 0);
+const updateConfig = async (batchSize: number) => {
+  return await execApi([{ update_config: { batch_size: batchSize } }], 0);
 };
 
 const addNewValidator = async (addr: string) => {
@@ -43,14 +43,20 @@ const recordMetrics = async () => {
   );
 };
 
-const getHistoryByTime = async (timestamp: number) => {
+const getAllValidatorMetricsByTime = async (timestamp: number) => {
   return (await queryApi({
-    get_history_by_time: { timestamp },
+    get_all_validator_metrics_by_time: { timestamp },
   })) as ValidatorMetric[];
 };
 
+const getValidatorMetricsByTime = async (timestamp: number, addr: string) => {
+  return (await queryApi({
+    get_validator_metrics_by_time: { timestamp, addr },
+  })) as ValidatorMetric;
+};
+
 const getState = async () => {
-  return await queryApi({ get_current_state: {} });
+  return await queryApi({ get_state: {} });
 };
 
 async function computeAllValidatorsAPRs(
@@ -58,7 +64,7 @@ async function computeAllValidatorsAPRs(
   timestamp2: number
 ) {
   return await queryApi({
-    get_all_aprs_by_interal: { timestamp1, timestamp2 },
+    get_all_aprs_by_interval: { timestamp1, timestamp2 },
   });
 }
 
@@ -75,14 +81,15 @@ async function computeValidatorAPR(
 const kyvContractApi = {
   query: {
     getState,
-    getHistoryByTime,
-    computeAllValidatorsAPRs,
+    getValidatorMetricsByTime,
+    getAllValidatorMetricsByTime,
     computeValidatorAPR,
+    computeAllValidatorsAPRs,
   },
   execute: {
     addNewValidator,
     recordMetrics,
-    updateRecordsToUpdatePerRun,
+    updateConfig,
   },
 };
 
