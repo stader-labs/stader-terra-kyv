@@ -1,18 +1,20 @@
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ValidatorAprResponse};
-use crate::state::{State, ValidatorMetrics, ValidatorUpdateTimings, METRICS_HISTORY, STATE};
+use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::util::{
-    compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
+    clamp, compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StakingMsg, StdError,
-    StdResult, Storage,
+    to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Order, Response, StakingMsg,
+    StdError, StdResult, Storage,
 };
 use cosmwasm_std::{Decimal, FullDelegation};
-use cw_storage_plus::U64Key;
+use cw_storage_plus::{Bound, U64Key};
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::ops::Add;
 use terra_cosmwasm::TerraQuerier;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -23,23 +25,24 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
-        last_epoch_cron_time: _env.block.time.seconds(), // Can be just 0 as well
-        manager: info.sender.clone(),
         vault_denom: msg.vault_denom.clone(),
+        validators: vec![],
+        cron_timestamps: vec![],
+        validator_index_for_next_cron: 0,
+    };
+    STATE.save(deps.storage, &state)?;
+
+    let config = Config {
+        manager: info.sender.clone(),
         amount_to_stake_per_validator: msg.amount_to_stake_per_validator,
-        validator_update_timings: vec![],
         batch_size: msg.batch_size,
     };
-
-    STATE.save(deps.storage, &state)?;
+    CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("manager", info.sender)
-        .add_attribute(
-            "last_epoch_cron_time",
-            _env.block.time.seconds().to_string(),
-        )
+        .add_attribute("time", _env.block.time.seconds().to_string())
         .add_attribute(
             "amount_to_stake_per_validator",
             msg.amount_to_stake_per_validator,
@@ -55,9 +58,11 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::RecordMetrics { timestamp } => record_validator_metrics(deps, env, timestamp),
-        ExecuteMsg::AddValidator { addr } => add_validator(deps, env, info, addr),
-        ExecuteMsg::UpdateConfig { batch_size } => update_config(deps, batch_size),
+        ExecuteMsg::RecordMetrics { timestamp } => {
+            record_validator_metrics(deps, env, info, timestamp)
+        }
+        ExecuteMsg::AddValidator { addr } => add_validator(deps, info, addr),
+        ExecuteMsg::UpdateConfig { batch_size } => update_config(deps, info, batch_size),
     }
 }
 
@@ -65,22 +70,46 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetState {} => to_binary(&query_state(deps)?),
-        QueryMsg::GetAllValidatorMetricsByTime { timestamp } => {
-            to_binary(&query_all_validators_metrics(deps, timestamp)?)
-        }
+        QueryMsg::GetConfig {} => to_binary(&query_config(deps)?),
+        QueryMsg::GetAllTimestamps {} => to_binary(&query_timestamps(deps)?),
         QueryMsg::GetAllAprsByInterval {
             timestamp1,
             timestamp2,
-        } => to_binary(&query_all_validators_aprs(deps, timestamp1, timestamp2)?),
+            from,
+            to,
+        } => to_binary(&query_validators_aprs_by_interval(
+            deps, timestamp1, timestamp2, from, to,
+        )?),
         QueryMsg::GetAprByValidator {
             timestamp1,
             timestamp2,
             addr,
         } => to_binary(&query_validator_apr(deps, timestamp1, timestamp2, addr)?),
-        QueryMsg::GetValidatorMetricsByTime { addr, timestamp } => {
-            to_binary(&query_validator_metrics(deps, addr, timestamp)?)
+        QueryMsg::GetAllValidatorMetrics { addr } => {
+            to_binary(&query_all_validator_metrics(deps, addr)?)
         }
+        QueryMsg::GetValidatorMetricsByTimestamp { addr, timestamp } => to_binary(
+            &query_validator_metrics_by_timestamp(deps, addr, timestamp)?,
+        ),
+        QueryMsg::GetValidatorsMetricsByTimestamp {
+            timestamp,
+            from,
+            to,
+        } => to_binary(&query_validators_metrics_by_timestamp(
+            deps, timestamp, from, to,
+        )?),
+        QueryMsg::GetValidatorMetricsBtwTimestamps {
+            addr,
+            timestamp1,
+            timestamp2,
+        } => to_binary(&query_all_validator_metrics_btw_timestamps(
+            deps, addr, timestamp1, timestamp2,
+        )?),
     }
+}
+
+fn query_timestamps(deps: Deps) -> StdResult<Vec<u64>> {
+    Ok(STATE.load(deps.storage)?.cron_timestamps)
 }
 
 fn query_validator_apr(
@@ -95,88 +124,94 @@ fn query_validator_apr(
         });
     }
 
-    let h1_opt = METRICS_HISTORY
-        .load(deps.storage, U64Key::new(timestamp1))?
-        .into_iter()
-        .find(|history| history.addr.eq(&addr));
+    let h1 = METRICS_HISTORY.load(deps.storage, (&addr, U64Key::new(timestamp1)))?;
 
-    let h2_opt = METRICS_HISTORY
-        .load(deps.storage, U64Key::new(timestamp2))?
-        .into_iter()
-        .find(|history| history.addr.eq(&addr));
-
-    if h1_opt.is_none() || h2_opt.is_none() {
-        return Err(StdError::GenericErr {
-            msg: "Validator does'nt have metrics recorded for all the given times".to_string(),
-        });
-    }
+    let h2 = METRICS_HISTORY.load(deps.storage, (&addr, U64Key::new(timestamp2)))?;
 
     return Ok(ValidatorAprResponse {
         addr,
-        apr: compute_apr(&h1_opt.unwrap(), &h2_opt.unwrap(), timestamp2 - timestamp1),
+        apr: compute_apr(&h1, &h2, timestamp2 - timestamp1),
     });
 }
 
-fn convert_validator_metrics_to_map(
-    metrics: Vec<ValidatorMetrics>,
-) -> HashMap<Addr, ValidatorMetrics> {
-    let mut map: HashMap<Addr, ValidatorMetrics> = HashMap::new();
-    for metric in metrics {
-        map.insert(metric.addr.clone(), metric);
-    }
-    map
-}
-
-fn query_all_validators_aprs(
+fn query_validators_aprs_by_interval(
     deps: Deps,
     timestamp1: u64,
     timestamp2: u64,
+    from: u32,
+    to: u32,
 ) -> StdResult<Vec<ValidatorAprResponse>> {
     if timestamp1.ge(&timestamp2) {
         return Err(StdError::GenericErr {
             msg: "timestamp1 cannot be greater than or equal to timestamp2".to_string(),
         });
     }
+    let validators = STATE.load(deps.storage)?.validators;
+
+    let total_validators: u32 = validators.len().try_into().unwrap();
+
+    if to.ge(&total_validators) || from > to {
+        return Err(StdError::GenericErr {
+            msg: "Invalid indexes!".to_string(),
+        });
+    }
+
+    let t1 = U64Key::new(timestamp1);
+    let t2 = U64Key::new(timestamp2);
 
     let mut response: Vec<ValidatorAprResponse> = vec![];
+    let mut start = from;
 
-    let history1_map = convert_validator_metrics_to_map(
-        METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp1))?,
-    );
-
-    let history2 = METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp2))?;
-
-    for h2 in history2 {
-        let h1_opt = history1_map.get(&h2.addr);
-        if let Some(h1) = h1_opt {
-            let apr = compute_apr(h1, &h2, timestamp2 - timestamp1);
+    while start.le(&to) {
+        let validator_addr = &validators[start as usize];
+        let h1_opt = METRICS_HISTORY.may_load(deps.storage, (&validator_addr, t1.clone()));
+        let h2_opt = METRICS_HISTORY.may_load(deps.storage, (&validator_addr, t2.clone()));
+        if let (Ok(Some(h1)), Ok(Some(h2))) = (h1_opt, h2_opt) {
+            let apr = compute_apr(&h1, &h2, timestamp2 - timestamp1);
             response.push(ValidatorAprResponse { addr: h2.addr, apr });
-        }
+        };
+        start = start + 1;
     }
 
     Ok(response)
 }
 
-fn update_config(deps: DepsMut, batch_size: u32) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.batch_size = batch_size;
-        Ok(s)
+fn update_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    batch_size: u32,
+) -> Result<Response, ContractError> {
+    if batch_size == 0 {
+        return Err(ContractError::BatchSizeCannotBeZero {});
+    }
+
+    let manager = CONFIG.load(deps.storage)?.manager;
+    // can only be updated by manager
+    if info.sender != manager {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    CONFIG.update(deps.storage, |mut conf| -> StdResult<_> {
+        conf.batch_size = batch_size;
+        Ok(conf)
     })?;
+
     Ok(Response::new().add_attribute("method", "update_config"))
 }
 
 fn add_validator(
     deps: DepsMut,
-    env: Env,
     info: MessageInfo,
     validator_addr: Addr,
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
+    let config = CONFIG.load(deps.storage)?;
+
     let vault_denom = state.vault_denom;
-    let amount_to_stake_per_validator = state.amount_to_stake_per_validator;
+    let amount_to_stake_per_validator = config.amount_to_stake_per_validator;
 
     // can only be called by manager
-    if info.sender != state.manager {
+    if info.sender != config.manager {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -190,11 +225,7 @@ fn add_validator(
     }
 
     // Validator should not be already recorded
-    if state
-        .validator_update_timings
-        .iter()
-        .any(|ValidatorUpdateTimings { addr, .. }| addr.eq(&validator_addr))
-    {
+    if state.validators.iter().any(|addr| addr.eq(&validator_addr)) {
         return Err(ContractError::ValidatorAlreadyExists {});
     }
 
@@ -216,14 +247,9 @@ fn add_validator(
     };
 
     STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.validator_update_timings.push(ValidatorUpdateTimings {
-            updated_time: env.block.time.seconds(),
-            addr: validator_addr.clone(),
-        });
+        s.validators.push(validator_addr.clone());
         Ok(s)
     })?;
-
-    // TODO: Maybe push an initial history for the latest time stamp ?
 
     Ok(Response::new()
         .add_messages([msg])
@@ -233,12 +259,17 @@ fn add_validator(
 pub fn record_validator_metrics(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     timestamp: u64,
 ) -> Result<Response, ContractError> {
-    let state = STATE.load(deps.storage)?;
+    let manager = CONFIG.load(deps.storage)?.manager;
+    // can only be called by manager
+    if info.sender != manager {
+        return Err(ContractError::Unauthorized {});
+    }
 
-    let validators_to_record =
-        update_and_get_validators_to_record(deps.storage, state.batch_size, timestamp)?;
+    // [10]
+    let validators_to_record = get_validators_to_record(deps.storage, timestamp)?;
 
     if validators_to_record.is_empty() {
         return Ok(Response::new()
@@ -246,27 +277,13 @@ pub fn record_validator_metrics(
             .add_attribute("msg", "All validators are recorded for the given cron time"));
     }
 
-    let current_validators_metrics = compute_current_metrics(&deps, env, &validators_to_record)?;
+    let current_validators_metrics =
+        compute_current_metrics(&deps, env, &validators_to_record, timestamp)?;
 
-    METRICS_HISTORY.update(
-        deps.storage,
-        U64Key::new(timestamp),
-        |history| -> StdResult<_> {
-            if let Some(mut value) = history {
-                for current_metric in current_validators_metrics {
-                    value.push(current_metric);
-                }
-                return Ok(value);
-            } else {
-                return Ok(current_validators_metrics);
-            }
-        },
-    )?;
-
-    STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.last_epoch_cron_time = timestamp;
-        Ok(s)
-    })?;
+    let t = U64Key::new(timestamp);
+    for metric in current_validators_metrics {
+        METRICS_HISTORY.save(deps.storage, (&metric.addr, t.clone()), &metric)?;
+    }
 
     Ok(Response::new()
         .add_attribute("method", "record_validator_metrics")
@@ -282,7 +299,8 @@ pub fn record_validator_metrics(
 fn compute_current_metrics(
     deps: &DepsMut,
     env: Env,
-    previous_update_timings: &Vec<ValidatorUpdateTimings>,
+    validators: &Vec<Addr>,
+    timestamp: u64,
 ) -> Result<Vec<ValidatorMetrics>, ContractError> {
     let state = STATE.load(deps.storage)?;
     let vault_denom = state.vault_denom;
@@ -293,43 +311,38 @@ fn compute_current_metrics(
 
     let mut current_metrics: Vec<ValidatorMetrics> = vec![];
 
-    for update in previous_update_timings {
-        let ValidatorUpdateTimings {
-            addr: validator_addr,
-            ..
-        } = update;
+    for validator_addr in validators {
         let delegation_opt = deps
             .querier
             .query_delegation(&env.contract.address, validator_addr)?;
 
-        let validator = deps.querier.query_validator(validator_addr)?.unwrap();
-
-        if delegation_opt.is_some() {
-            let delegation = delegation_opt.unwrap();
-            let current_rewards = get_total_rewards_in_vault_denom(
-                &delegation,
-                &vault_denom,
-                &mut exchange_rates_map,
-                &querier,
-            );
-
-            // This is the new Delegated amount after slashing Ex: (10 => 9.8 etc.,)
-            let current_delegated_amount = delegation.amount.amount.clone();
-
-            current_metrics.push(ValidatorMetrics {
-                addr: validator_addr.clone(),
-                rewards: current_rewards,
-                delegated_amount: current_delegated_amount,
-                commission: validator.commission,
-                max_commission: validator.max_commission,
-            });
-        } else {
-            // TODO: You should take a look at - Validator timings are already updated above
+        if delegation_opt.is_none() {
             return Err(ContractError::NoDelegationFound {
                 manager: env.contract.address.clone(),
                 validator: validator_addr.clone(),
             });
         }
+
+        let validator = deps.querier.query_validator(validator_addr)?.unwrap();
+        let delegation = delegation_opt.unwrap();
+        let current_rewards = get_total_rewards_in_vault_denom(
+            &delegation,
+            &vault_denom,
+            &mut exchange_rates_map,
+            &querier,
+        );
+
+        // This is the new Delegated amount after slashing Ex: (10 => 9.8 etc.,)
+        let current_delegated_amount = delegation.amount.amount.clone();
+
+        current_metrics.push(ValidatorMetrics {
+            addr: validator_addr.clone(),
+            rewards: current_rewards,
+            delegated_amount: current_delegated_amount,
+            commission: validator.commission,
+            max_commission: validator.max_commission,
+            timestamp,
+        });
     }
     Ok(current_metrics)
 }
@@ -354,36 +367,56 @@ fn get_total_rewards_in_vault_denom(
     current_rewards
 }
 
-fn update_and_get_validators_to_record(
+fn get_validators_to_record(
     storage: &mut dyn Storage,
-    max_records_to_update_per_run: u32,
     timestamp: u64,
-) -> Result<Vec<ValidatorUpdateTimings>, ContractError> {
-    let mut validator_updates: Vec<ValidatorUpdateTimings> = vec![];
-    let mut records_to_update: u32 = 0;
+) -> Result<Vec<Addr>, ContractError> {
+    let batch_size = CONFIG.load(storage)?.batch_size;
+    let state = STATE.load(storage)?;
+    let last_cron_time_opt = state.cron_timestamps.last();
+    let validators = state.validators;
+    let total_validators: u32 = validators.len().try_into().unwrap();
+    let mut validator_index_for_next_cron = state.validator_index_for_next_cron;
+
+    // If the Cron time is completely New (Update State)
+    if last_cron_time_opt.is_none() || !last_cron_time_opt.unwrap().eq(&timestamp) {
+        STATE.update(storage, |mut s| -> StdResult<_> {
+            s.cron_timestamps.push(timestamp);
+            s.validator_index_for_next_cron = 0;
+            Ok(s)
+        })?;
+
+        validator_index_for_next_cron = 0
+    }
+
+    if validator_index_for_next_cron.ge(&total_validators) {
+        return Ok(vec![]);
+    }
+
+    let mut min = clamp(0, validator_index_for_next_cron, total_validators);
+    let max = clamp(
+        0,
+        validator_index_for_next_cron + batch_size,
+        total_validators,
+    );
+    // Examples
+    // len = 12, batch_size = 5
+    // (=0 <5) 5 (=5 <10) 10 (=10 <12)
+    // len = 2, batch_size = 1
+    // (=0 <1) 1 (=1 <2)
+
+    let mut validators_batch: Vec<Addr> = vec![];
+    while min < max {
+        validators_batch.push(validators[min as usize].clone());
+        min = min.add(1);
+    }
 
     STATE.update(storage, |mut s| -> StdResult<_> {
-        s.validator_update_timings = s
-            .validator_update_timings
-            .into_iter()
-            .map(|timing| {
-                if records_to_update <= max_records_to_update_per_run
-                    && timing.updated_time < timestamp
-                {
-                    validator_updates.push(timing.clone()); // Push the previous history before updating to current timing
-                    records_to_update += 1;
-                    return ValidatorUpdateTimings {
-                        addr: timing.addr,
-                        updated_time: timestamp,
-                    };
-                }
-                return timing;
-            })
-            .collect();
+        s.validator_index_for_next_cron = max;
         Ok(s)
     })?;
 
-    Ok(validator_updates)
+    Ok(validators_batch)
 }
 
 fn get_amount_in_vault_denom(
@@ -436,19 +469,72 @@ fn query_state(deps: Deps) -> StdResult<State> {
     Ok(state)
 }
 
-fn query_all_validators_metrics(deps: Deps, timestamp: u64) -> StdResult<Vec<ValidatorMetrics>> {
-    METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp))
+fn query_config(deps: Deps) -> StdResult<Config> {
+    let config = CONFIG.load(deps.storage)?;
+    Ok(config)
 }
 
-fn query_validator_metrics(deps: Deps, addr: Addr, timestamp: u64) -> StdResult<ValidatorMetrics> {
-    let metrics = METRICS_HISTORY.load(deps.storage, U64Key::new(timestamp))?;
+fn query_all_validator_metrics(
+    deps: Deps,
+    addr: Addr,
+) -> StdResult<Vec<(Vec<u8>, ValidatorMetrics)>> {
+    METRICS_HISTORY
+        .prefix(&addr)
+        .range(deps.storage, None, None, Order::Ascending)
+        .collect()
+}
 
-    match metrics.into_iter().find(|metric| metric.addr.eq(&addr)) {
-        Some(value) => Ok(value),
-        None => Err(StdError::GenericErr {
-            msg: "No metrics found for given validator and timestamp".to_string(),
-        }),
+fn query_all_validator_metrics_btw_timestamps(
+    deps: Deps,
+    addr: Addr,
+    timestamp1: u64,
+    timestamp2: u64,
+) -> StdResult<Vec<(Vec<u8>, ValidatorMetrics)>> {
+    if timestamp1.ge(&timestamp2) {
+        return Err(StdError::GenericErr {
+            msg: "timestamp1 cannot be greater than or equal to timestamp2".to_string(),
+        });
     }
+    let from = Some(Bound::Inclusive(U64Key::new(timestamp1).into()));
+    let to = Some(Bound::Inclusive(U64Key::new(timestamp2).into()));
+
+    METRICS_HISTORY
+        .prefix(&addr)
+        .range(deps.storage, from, to, Order::Ascending)
+        .collect()
+}
+
+fn query_validator_metrics_by_timestamp(
+    deps: Deps,
+    addr: Addr,
+    timestamp: u64,
+) -> StdResult<ValidatorMetrics> {
+    METRICS_HISTORY.load(deps.storage, (&addr, U64Key::new(timestamp)))
+}
+
+fn query_validators_metrics_by_timestamp(
+    deps: Deps,
+    timestamp: u64,
+    from: u32,
+    to: u32,
+) -> StdResult<Vec<ValidatorMetrics>> {
+    let validators = STATE.load(deps.storage)?.validators;
+
+    let total_validators: u32 = validators.len().try_into().unwrap();
+
+    if to.ge(&total_validators) || from > to {
+        return Err(StdError::GenericErr {
+            msg: "Invalid indexes!".to_string(),
+        });
+    }
+
+    let mut start = from;
+    let mut res: Vec<ValidatorMetrics> = vec![];
+    while start.le(&to) {
+        res.push(METRICS_HISTORY.load(deps.storage, (&validators[start as usize], U64Key::new(timestamp)))?);
+        start = start + 1;
+    }
+    Ok(res)
 }
 
 #[cfg(test)]

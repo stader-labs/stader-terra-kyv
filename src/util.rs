@@ -9,6 +9,16 @@ pub fn decimal_summation_in_256(a: Decimal, b: Decimal) -> Decimal {
     c_u256
 }
 
+pub fn clamp(min: u32, value: u32, max: u32) -> u32 {
+    if value < min {
+        min
+    } else if value > max {
+        max
+    } else {
+        value
+    }
+}
+
 pub fn decimal_subtraction_in_256(a: Decimal, b: Decimal) -> Decimal {
     let a_u256: Decimal256 = a.into();
     let b_u256: Decimal256 = b.into();

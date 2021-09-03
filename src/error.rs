@@ -26,4 +26,7 @@ pub enum ContractError {
 
     #[error("Invalid timestamps provided")]
     InvalidTimestamps { msg: String },
+
+    #[error("Batch size cannot be zero")]
+    BatchSizeCannotBeZero {},
 }

@@ -1,7 +1,5 @@
 # Build results
 /target
-/scripts/node_modules
-/scripts/clientAndWallet.ts
 /artifacts
 /node_modules
 /compile

@@ -20,17 +20,31 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetAllValidatorMetricsByTime {
-        timestamp: u64,
+    GetAllTimestamps {},
+    GetAllValidatorMetrics {
+        addr: Addr,
     },
-    GetValidatorMetricsByTime {
+    GetValidatorMetricsBtwTimestamps {
+        addr: Addr,
+        timestamp1: u64,
+        timestamp2: u64,
+    },
+    GetValidatorMetricsByTimestamp {
         timestamp: u64,
         addr: Addr,
     },
+    GetValidatorsMetricsByTimestamp {
+        timestamp: u64,
+        from: u32,
+        to: u32,
+    },
     GetState {},
+    GetConfig {},
     GetAllAprsByInterval {
         timestamp1: u64,
         timestamp2: u64,
+        from: u32,
+        to: u32,
     },
     GetAprByValidator {
         timestamp1: u64,

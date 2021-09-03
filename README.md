@@ -43,50 +43,6 @@ npx ts-node deploy.ts # Upload & Initialize the contract (Need a config, client,
 npx ts-node main.ts # Has scripts to interact with the contract
 ```
 
-#### Interacting scripts
-
-> Query - Get the current state/config of the contract
-
-```js
-kyvContract.query.getState();
-```
-
-> Query - Compute Apr a validator for a given time interval
-
-```js
-kyvContract.query.computeValidatorAPR(t1, t2, validatorAddr);
-```
-
-> Query - Compute Apr of all validators for a given time interval
-
-```js
-kyvContract.query.computeAllValidatorsAPRs(t1, t2);
-```
-
-> Query - Get validator metrics at a given time
-
-```js
-kyvContract.query.getValidatorMetricsByTime(t);
-```
-
-> Query - Get All the validators metrics at a given time
-
-```js
-kyvContract.query.getAllValidatorMetricsByTime(t);
-```
-
-> Execute - Add validator
-
-```js
-kyvContract.execute.addNewValidator(validatorAddr);
-```
-
-> Execute - Run cron to record validator metrics
-
-```js
-kyvContract.execute.recordMetrics();
-```
-
 #### CI Support
 
 We have template configurations for both GitHub Actions and Circle CI in the generated project, so you can get up and running with CI right away.

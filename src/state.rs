@@ -6,18 +6,17 @@ use cw_storage_plus::{Item, Map, U64Key};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
-    pub last_epoch_cron_time: u64,
     pub vault_denom: String,
-    pub manager: Addr,
-    pub amount_to_stake_per_validator: Uint128,
-    pub validator_update_timings: Vec<ValidatorUpdateTimings>,
-    pub batch_size: u32,
+    pub validators: Vec<Addr>,
+    pub cron_timestamps: Vec<u64>,
+    pub validator_index_for_next_cron: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct ValidatorUpdateTimings {
-    pub addr: Addr,
-    pub updated_time: u64,
+pub struct Config {
+    pub manager: Addr,
+    pub amount_to_stake_per_validator: Uint128,
+    pub batch_size: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -27,9 +26,12 @@ pub struct ValidatorMetrics {
     pub delegated_amount: Uint128, // For tracking the amount delegated (With slashing)
     pub commission: Decimal,
     pub max_commission: Decimal,
+    pub timestamp: u64,
 }
 
-pub const METRICS_HISTORY: Map<U64Key, Vec<ValidatorMetrics>> =
+pub const METRICS_HISTORY: Map<(&Addr, U64Key), ValidatorMetrics> =
     Map::new("validator_metrics_history");
 
 pub const STATE: Item<State> = Item::new("state");
+
+pub const CONFIG: Item<Config> = Item::new("config");
