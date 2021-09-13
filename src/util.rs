@@ -1,3 +1,5 @@
+use std::cmp;
+
 use crate::state::ValidatorMetrics;
 use cosmwasm_bignumber::Decimal256;
 use cosmwasm_std::{Decimal, Uint128};
@@ -9,14 +11,8 @@ pub fn decimal_summation_in_256(a: Decimal, b: Decimal) -> Decimal {
     c_u256
 }
 
-pub fn clamp(min: u32, value: u32, max: u32) -> u32 {
-    if value < min {
-        min
-    } else if value > max {
-        max
-    } else {
-        value
-    }
+pub fn clamp(min: u64, value: u64, max: u64) -> u64 {
+    cmp::min(cmp::max(min, value), max)
 }
 
 pub fn decimal_subtraction_in_256(a: Decimal, b: Decimal) -> Decimal {
@@ -61,9 +57,54 @@ pub fn compute_apr(
     );
 
     let denominator = decimal_multiplication_in_256(
-        uint128_to_decimal(h2.delegated_amount),
+        uint128_to_decimal(h1.delegated_amount),
         u64_to_decimal(time_diff_in_seconds),
     );
 
     decimal_division_in_256(numerator, denominator)
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::Addr;
+
+    use super::*;
+    #[test]
+    fn test_clamp() {
+        let res = clamp(0, 2, 10);
+        assert_eq!(res, 2);
+        let res = clamp(10, 2, 20);
+        assert_eq!(res, 10);
+        let res = clamp(10, 200, 20);
+        assert_eq!(res, 20);
+        let res = clamp(20, 20, 20);
+        assert_eq!(res, 20);
+        let res = clamp(5, 5, 20);
+        assert_eq!(res, 5);
+        let res = clamp(0, 3, 3);
+        assert_eq!(res, 3);
+    }
+
+    #[test]
+    fn test_compute_apr() {
+        let h1 = ValidatorMetrics {
+            addr: Addr::unchecked("a1"),
+            rewards: Decimal::one(),
+            delegated_amount: Uint128::new(10),
+            commission: Decimal::one(),
+            max_commission: Decimal::one(),
+            timestamp: 1,
+            rewards_in_coins: vec![],
+        };
+        let h2 = ValidatorMetrics {
+            addr: Addr::unchecked("a1"),
+            rewards: u64_to_decimal(2),
+            delegated_amount: Uint128::new(100),
+            commission: Decimal::one(),
+            max_commission: Decimal::one(),
+            timestamp: 2,
+            rewards_in_coins: vec![],
+        };
+        assert_eq!(compute_apr(&h1, &h2, 1), u64_to_decimal(315360000))
+    }
 }

@@ -6,15 +6,15 @@ use crate::util::{
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
+use cosmwasm_std::Decimal;
 use cosmwasm_std::{
     to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Order, Response, StakingMsg,
-    StdError, StdResult, Storage,
+    StdError, StdResult, Storage, Uint128,
 };
-use cosmwasm_std::{Decimal, FullDelegation};
 use cw_storage_plus::{Bound, U64Key};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use terra_cosmwasm::TerraQuerier;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -138,8 +138,8 @@ fn query_validators_aprs_by_interval(
     deps: Deps,
     timestamp1: u64,
     timestamp2: u64,
-    from: u32,
-    to: u32,
+    from: u64,
+    to: u64,
 ) -> StdResult<Vec<ValidatorAprResponse>> {
     if timestamp1.ge(&timestamp2) {
         return Err(StdError::GenericErr {
@@ -148,7 +148,7 @@ fn query_validators_aprs_by_interval(
     }
     let validators = STATE.load(deps.storage)?.validators;
 
-    let total_validators: u32 = validators.len().try_into().unwrap();
+    let total_validators: u64 = validators.len().try_into().unwrap();
 
     if to.ge(&total_validators) || from > to {
         return Err(StdError::GenericErr {
@@ -179,7 +179,7 @@ fn query_validators_aprs_by_interval(
 fn update_config(
     deps: DepsMut,
     info: MessageInfo,
-    batch_size: u32,
+    batch_size: u64,
 ) -> Result<Response, ContractError> {
     if batch_size == 0 {
         return Err(ContractError::BatchSizeCannotBeZero {});
@@ -196,7 +196,9 @@ fn update_config(
         Ok(conf)
     })?;
 
-    Ok(Response::new().add_attribute("method", "update_config"))
+    Ok(Response::new()
+        .add_attribute("method", "update_config")
+        .add_attribute("new_batch_size", batch_size.to_string()))
 }
 
 fn add_validator(
@@ -268,13 +270,13 @@ pub fn record_validator_metrics(
         return Err(ContractError::Unauthorized {});
     }
 
-    // [10]
     let validators_to_record = get_validators_to_record(deps.storage, timestamp)?;
 
     if validators_to_record.is_empty() {
         return Ok(Response::new()
             .add_attribute("method", "record_validator_metrics")
-            .add_attribute("msg", "All validators are recorded for the given cron time"));
+            .add_attribute("msg", "All validators are recorded for the given cron time")
+            .add_attribute("validators_left", "0"));
     }
 
     let current_validators_metrics =
@@ -304,6 +306,7 @@ fn compute_current_metrics(
 ) -> Result<Vec<ValidatorMetrics>, ContractError> {
     let state = STATE.load(deps.storage)?;
     let vault_denom = state.vault_denom;
+    let last_cron_time_opt = state.cron_timestamps.last();
 
     let mut exchange_rates_map: HashMap<String, Decimal> = HashMap::new();
     exchange_rates_map.insert(vault_denom.clone(), Decimal::one());
@@ -323,10 +326,24 @@ fn compute_current_metrics(
             });
         }
 
-        let validator = deps.querier.query_validator(validator_addr)?.unwrap();
+        let validator_opt = deps.querier.query_validator(validator_addr)?;
+        // if suddenly validators drop out of the validator set, either due to jailing or some other mishap.
+        if validator_opt.is_none() {
+            continue;
+        }
+
+        let validator = validator_opt.unwrap();
         let delegation = delegation_opt.unwrap();
-        let current_rewards = get_total_rewards_in_vault_denom(
-            &delegation,
+
+        let (rewards_diff, previous_rewards) = get_diff_in_rewards_from_last_cron(
+            deps,
+            &validator_addr,
+            last_cron_time_opt,
+            delegation.accumulated_rewards.clone(),
+        )?;
+
+        let current_rewards_diff = get_total_rewards_in_vault_denom(
+            &rewards_diff,
             &vault_denom,
             &mut exchange_rates_map,
             &querier,
@@ -337,25 +354,72 @@ fn compute_current_metrics(
 
         current_metrics.push(ValidatorMetrics {
             addr: validator_addr.clone(),
-            rewards: current_rewards,
+            rewards: decimal_summation_in_256(current_rewards_diff, previous_rewards),
             delegated_amount: current_delegated_amount,
             commission: validator.commission,
             max_commission: validator.max_commission,
+            rewards_in_coins: delegation.accumulated_rewards.clone(),
             timestamp,
         });
     }
     Ok(current_metrics)
 }
 
+fn get_diff_in_rewards_from_last_cron(
+    deps: &DepsMut,
+    validator_addr: &&Addr,
+    last_cron_time_opt: Option<&u64>,
+    current_accumulated_rewards: Vec<Coin>,
+    // Return is Tuple of (Vec<Coin> = Diff in rewards,  Decimal = Previous cron rewards)
+) -> Result<(Vec<Coin>, Decimal), ContractError> {
+    // If this is the very first cron we simply return current_accumulated_rewards as the diff
+    if last_cron_time_opt.is_none() {
+        return Ok((current_accumulated_rewards, Decimal::zero()));
+    }
+
+    let last_cron_time = last_cron_time_opt.unwrap();
+    let previous_metrics_opt = METRICS_HISTORY.may_load(
+        deps.storage,
+        (&validator_addr, U64Key::new(last_cron_time.clone())),
+    )?;
+
+    // If validaor is added after the prevous cron run, then there wont be any prev history for this validator
+    if previous_metrics_opt.is_none() {
+        return Ok((current_accumulated_rewards, Decimal::zero()));
+    }
+
+    let previous_metrics = previous_metrics_opt.unwrap();
+
+    let mut previous_rewards_map: HashMap<String, Uint128> = HashMap::new();
+    for reward in previous_metrics.rewards_in_coins {
+        previous_rewards_map.insert(reward.denom, reward.amount);
+    }
+
+    let diff_in_rewards = current_accumulated_rewards
+        .into_iter()
+        .map(|reward| {
+            // Find matching denom reward in the previous run
+            let prev_reward_opt = previous_rewards_map.get(&reward.denom);
+            return match prev_reward_opt {
+                Some(prev_reward) => Coin {
+                    denom: reward.denom,
+                    amount: reward.amount.sub(prev_reward), // Subtract the previous denom reward amount with the current
+                },
+                None => reward, // Last rewards vec does not contain this particular denom reward
+            };
+        })
+        .collect();
+    return Ok((diff_in_rewards, previous_metrics.rewards));
+}
+
 fn get_total_rewards_in_vault_denom(
-    delegation: &FullDelegation,
+    rewards: &Vec<Coin>,
     vault_denom: &String,
     exchange_rates_map: &mut HashMap<String, Decimal>,
     querier: &TerraQuerier,
 ) -> Decimal {
-    let accumulated_rewards = &delegation.accumulated_rewards;
     let mut current_rewards: Decimal = Decimal::zero();
-    for coin in accumulated_rewards {
+    for coin in rewards {
         // Tries to find the exchange rate in the hashmap,
         // If not present we fetch the exchange rate and add it to the map before calculating reward
         let reward_for_coin =
@@ -375,7 +439,7 @@ fn get_validators_to_record(
     let state = STATE.load(storage)?;
     let last_cron_time_opt = state.cron_timestamps.last();
     let validators = state.validators;
-    let total_validators: u32 = validators.len().try_into().unwrap();
+    let total_validators: u64 = validators.len().try_into().unwrap();
     let mut validator_index_for_next_cron = state.validator_index_for_next_cron;
 
     // If the Cron time is completely New (Update State)
@@ -401,9 +465,9 @@ fn get_validators_to_record(
     );
     // Examples
     // len = 12, batch_size = 5
-    // (=0 <5) 5 (=5 <10) 10 (=10 <12)
+    // (=0 <5) 5 (=5 <10) 10 (=10 <12) Final(=12 is >=12 (total_validators)) => return Ok(vec![]);
     // len = 2, batch_size = 1
-    // (=0 <1) 1 (=1 <2)
+    // (=0 <1) 1 (=1 <2) Final(=2 is >= 2 (total_validators)) => return Ok(vec![]);
 
     let mut validators_batch: Vec<Addr> = vec![];
     while min < max {
@@ -427,7 +491,7 @@ fn get_amount_in_vault_denom(
 ) -> Option<Decimal> {
     if exchange_rates_map.contains_key(&coin.denom) {
         let exchange_rate = exchange_rates_map.get(&coin.denom).unwrap();
-        return Some(convert_amount_to_valut_denom(coin, *exchange_rate)); // Not sure how this * works!
+        return Some(convert_amount_to_valut_denom(coin, exchange_rate.clone()));
     } else {
         let rate_opt = query_exchange_rate(querier, vault_denom, &coin.denom);
         if rate_opt.is_none() {
@@ -450,7 +514,7 @@ fn query_exchange_rate(
     vault_denom: &String,
     coin_denom: &String,
 ) -> Option<Decimal> {
-    let result = querier.query_exchange_rates(vault_denom, vec![coin_denom]);
+    let result = querier.query_exchange_rates(coin_denom, vec![vault_denom]);
     if result.is_err() {
         return None;
     }
@@ -515,12 +579,12 @@ fn query_validator_metrics_by_timestamp(
 fn query_validators_metrics_by_timestamp(
     deps: Deps,
     timestamp: u64,
-    from: u32,
-    to: u32,
+    from: u64,
+    to: u64,
 ) -> StdResult<Vec<ValidatorMetrics>> {
     let validators = STATE.load(deps.storage)?.validators;
 
-    let total_validators: u32 = validators.len().try_into().unwrap();
+    let total_validators: u64 = validators.len().try_into().unwrap();
 
     if to.ge(&total_validators) || from > to {
         return Err(StdError::GenericErr {
@@ -531,7 +595,10 @@ fn query_validators_metrics_by_timestamp(
     let mut start = from;
     let mut res: Vec<ValidatorMetrics> = vec![];
     while start.le(&to) {
-        res.push(METRICS_HISTORY.load(deps.storage, (&validators[start as usize], U64Key::new(timestamp)))?);
+        res.push(METRICS_HISTORY.load(
+            deps.storage,
+            (&validators[start as usize], U64Key::new(timestamp)),
+        )?);
         start = start + 1;
     }
     Ok(res)
@@ -544,7 +611,7 @@ mod tests {
     use cosmwasm_std::{coins, Uint128};
 
     #[test]
-    fn easy_flow() {
+    fn test_instantiate() {
         let mut deps = mock_dependencies(&coins(2, "token"));
 
         let msg = InstantiateMsg {
@@ -554,8 +621,5 @@ mod tests {
         };
         let info = mock_info("creator", &coins(2, "token"));
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // Add Validator
-        // Invoke Record metrics here
     }
 }

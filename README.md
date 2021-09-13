@@ -54,8 +54,6 @@ The first time you set up the project (or after adding any dep), you should ensu
 
 MIT
 
-**Free Software, Hell Yeah!**
-
 [//]: # "These are reference links used in the body of this note and get stripped out when the markdown processor does its job. There is no need to format nicely because it shouldn't be seen."
 [terrajs]: https://terra-money.github.io/terra.js/
 [rust]: https://www.rust-lang.org/
