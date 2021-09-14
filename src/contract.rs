@@ -2,7 +2,7 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ValidatorAprResponse};
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::util::{
-    clamp, compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
+   compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -14,7 +14,7 @@ use cosmwasm_std::{
 use cw_storage_plus::{Bound, U64Key};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::ops::{Add, Sub};
+use std::ops::{Sub};
 use terra_cosmwasm::TerraQuerier;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -130,7 +130,7 @@ fn query_validator_apr(
 
     return Ok(ValidatorAprResponse {
         addr,
-        apr: compute_apr(&h1, &h2, timestamp2 - timestamp1),
+        apr: compute_apr(&h1, &h2, timestamp2 - timestamp1)?,
     });
 }
 
@@ -167,7 +167,7 @@ fn query_validators_aprs_by_interval(
         let h1_opt = METRICS_HISTORY.may_load(deps.storage, (&validator_addr, t1.clone()));
         let h2_opt = METRICS_HISTORY.may_load(deps.storage, (&validator_addr, t2.clone()));
         if let (Ok(Some(h1)), Ok(Some(h2))) = (h1_opt, h2_opt) {
-            let apr = compute_apr(&h1, &h2, timestamp2 - timestamp1);
+            let apr = compute_apr(&h1, &h2, timestamp2 - timestamp1)?;
             response.push(ValidatorAprResponse { addr: h2.addr, apr });
         };
         start = start + 1;
@@ -457,26 +457,18 @@ fn get_validators_to_record(
         return Ok(vec![]);
     }
 
-    let mut min = clamp(0, validator_index_for_next_cron, total_validators);
-    let max = clamp(
-        0,
-        validator_index_for_next_cron + batch_size,
-        total_validators,
-    );
     // Examples
     // len = 12, batch_size = 5
     // (=0 <5) 5 (=5 <10) 10 (=10 <12) Final(=12 is >=12 (total_validators)) => return Ok(vec![]);
     // len = 2, batch_size = 1
     // (=0 <1) 1 (=1 <2) Final(=2 is >= 2 (total_validators)) => return Ok(vec![]);
+    let start = validator_index_for_next_cron as usize;
+    let end = start + (batch_size as usize);
 
-    let mut validators_batch: Vec<Addr> = vec![];
-    while min < max {
-        validators_batch.push(validators[min as usize].clone());
-        min = min.add(1);
-    }
+    let validators_batch: Vec<Addr> = validators[start..end].to_vec();
 
     STATE.update(storage, |mut s| -> StdResult<_> {
-        s.validator_index_for_next_cron = max;
+        s.validator_index_for_next_cron = end as u64;
         Ok(s)
     })?;
 
