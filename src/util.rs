@@ -1,18 +1,13 @@
-use std::cmp;
-
 use crate::state::ValidatorMetrics;
 use cosmwasm_bignumber::Decimal256;
-use cosmwasm_std::{Decimal, Uint128};
+use cosmwasm_std::{Decimal, StdError, StdResult, Uint128};
+
 
 pub fn decimal_summation_in_256(a: Decimal, b: Decimal) -> Decimal {
     let a_u256: Decimal256 = a.into();
     let b_u256: Decimal256 = b.into();
     let c_u256: Decimal = (b_u256 + a_u256).into();
     c_u256
-}
-
-pub fn clamp(min: u64, value: u64, max: u64) -> u64 {
-    cmp::min(cmp::max(min, value), max)
 }
 
 pub fn decimal_subtraction_in_256(a: Decimal, b: Decimal) -> Decimal {
@@ -50,7 +45,19 @@ pub fn compute_apr(
     h1: &ValidatorMetrics,
     h2: &ValidatorMetrics,
     time_diff_in_seconds: u64,
-) -> Decimal {
+) -> StdResult<Decimal> {
+    if h1.delegated_amount.is_zero() {
+        return Err(StdError::GenericErr {
+            msg: "ZeroDivisionError: Cannot compute apr as the delegation amount is zero".to_string(),
+        });
+    }
+
+    if time_diff_in_seconds == 0 {
+        return Err(StdError::GenericErr {
+            msg: "ZeroDivisionError: Cannot compute apr as the time difference is zero".to_string(),
+        });
+    }
+
     let numerator = decimal_multiplication_in_256(
         decimal_subtraction_in_256(h2.rewards, h1.rewards),
         u64_to_decimal(3153600000), // (365 * 86400) * 100 => (365 * 86400) = Seconds in an year, 100 = percentage
@@ -61,7 +68,7 @@ pub fn compute_apr(
         u64_to_decimal(time_diff_in_seconds),
     );
 
-    decimal_division_in_256(numerator, denominator)
+    Ok(decimal_division_in_256(numerator, denominator))
 }
 
 #[cfg(test)]
@@ -69,21 +76,6 @@ mod tests {
     use cosmwasm_std::Addr;
 
     use super::*;
-    #[test]
-    fn test_clamp() {
-        let res = clamp(0, 2, 10);
-        assert_eq!(res, 2);
-        let res = clamp(10, 2, 20);
-        assert_eq!(res, 10);
-        let res = clamp(10, 200, 20);
-        assert_eq!(res, 20);
-        let res = clamp(20, 20, 20);
-        assert_eq!(res, 20);
-        let res = clamp(5, 5, 20);
-        assert_eq!(res, 5);
-        let res = clamp(0, 3, 3);
-        assert_eq!(res, 3);
-    }
 
     #[test]
     fn test_compute_apr() {
@@ -105,6 +97,6 @@ mod tests {
             timestamp: 2,
             rewards_in_coins: vec![],
         };
-        assert_eq!(compute_apr(&h1, &h2, 1), u64_to_decimal(315360000))
+        assert_eq!(compute_apr(&h1, &h2, 1), Ok(u64_to_decimal(315360000)))
     }
 }
