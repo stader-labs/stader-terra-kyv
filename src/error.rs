@@ -19,11 +19,14 @@ pub enum ContractError {
     NoFundsFound {},
 
     #[error("In sufficient funds for this action")]
-    NotMatchingFunds {},
+    InsufficientFunds {},
 
     #[error("Something went wrong while getting the delegation??")]
     NoDelegationFound { manager: Addr, validator: Addr },
 
     #[error("Invalid timestamps provided")]
     InvalidTimestamps { msg: String },
+
+    #[error("Batch size cannot be zero")]
+    BatchSizeCannotBeZero {},
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct InstantiateMsg {
     pub vault_denom: String,
     pub amount_to_stake_per_validator: Uint128,
-    pub max_records_to_update_per_run: u32,
+    pub batch_size: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -14,19 +14,37 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     RecordMetrics { timestamp: u64 }, // 12:00AM
     AddValidator { addr: Addr },
-    UpdateRecordsToUpdatePerRun { no: u32 },
+    UpdateConfig { batch_size: u64 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetHistoryByTime {
-        timestamp: u64,
+    GetAllTimestamps {},
+    GetAllValidatorMetrics {
+        addr: Addr,
     },
-    GetState {},
-    GetAllAprsByInteral {
+    GetValidatorMetricsBtwTimestamps {
+        addr: Addr,
         timestamp1: u64,
         timestamp2: u64,
+    },
+    GetValidatorMetricsByTimestamp {
+        timestamp: u64,
+        addr: Addr,
+    },
+    GetValidatorsMetricsByTimestamp {
+        timestamp: u64,
+        from: u64,
+        to: u64,
+    },
+    GetState {},
+    GetConfig {},
+    GetAllAprsByInterval {
+        timestamp1: u64,
+        timestamp2: u64,
+        from: u64,
+        to: u64,
     },
     GetAprByValidator {
         timestamp1: u64,
