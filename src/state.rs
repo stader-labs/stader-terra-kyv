@@ -24,6 +24,7 @@ pub struct ValidatorMetrics {
     pub addr: Addr,                // Validator Address
     pub rewards: Decimal,          // these are cummulative rewards
     pub delegated_amount: Uint128, // For tracking the amount delegated (With slashing)
+    pub self_delegated_amount: Uint128,
     pub commission: Decimal,
     pub max_commission: Decimal,
     pub timestamp: u64,
