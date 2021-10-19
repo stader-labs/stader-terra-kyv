@@ -2,7 +2,7 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ValidatorAprResponse};
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::util::{
-    compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
+   compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -15,7 +15,7 @@ use cw_storage_plus::{Bound, U64Key};
 use std::cmp;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::ops::Sub;
+use std::ops::{Sub};
 use terra_cosmwasm::TerraQuerier;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -353,22 +353,10 @@ fn compute_current_metrics(
         // This is the new Delegated amount after slashing Ex: (10 => 9.8 etc.,)
         let current_delegated_amount = delegation.amount.amount.clone();
 
-        let self_delegation_opt = deps.querier.query_delegation(
-            "terra1288dxhaf8l2sv6ela00l9eta6595tm2zwmyyuj",//This is the Account Address
-            "terravaloper1288dxhaf8l2sv6ela00l9eta6595tm2zw5gevp",//This is the Operator Address
-        );
-
-        // This is the self_delegation amount (delegation by validator)
-        let self_delegation = match self_delegation_opt {
-            Ok(delegationresult) => delegationresult.unwrap().amount.amount,
-            Err(_) => Uint128::new(0),
-        };
-
         current_metrics.push(ValidatorMetrics {
             addr: validator_addr.clone(),
             rewards: decimal_summation_in_256(current_rewards_diff, previous_rewards),
             delegated_amount: current_delegated_amount,
-            self_delegated_amount: self_delegation,
             commission: validator.commission,
             max_commission: validator.max_commission,
             rewards_in_coins: delegation.accumulated_rewards.clone(),
@@ -626,22 +614,5 @@ mod tests {
         };
         let info = mock_info("creator", &coins(2, "token"));
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-    }
-
-    #[test]
-    fn test_record_metrics(){
-        let mut deps = mock_dependencies(&[]);
-        let info = mock_info("creator", &[]);
-        let env = mock_env();
-        let timestamp=10;
-
-        let _res= record_validator_metrics(deps.as_mut(), env, info, timestamp);
-    }
-
-    #[test]
-    fn test_get_all_validator_metrics(){
-        let deps = mock_dependencies(&[]);
-        let validator=Addr::unchecked("valid0001");
-        let _res=query_all_validator_metrics(deps.as_ref(),validator);
     }
 }
