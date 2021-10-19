@@ -48,7 +48,8 @@ pub fn compute_apr(
 ) -> StdResult<Decimal> {
     if h1.delegated_amount.is_zero() {
         return Err(StdError::GenericErr {
-            msg: "ZeroDivisionError: Cannot compute apr as the delegation amount is zero".to_string(),
+            msg: "ZeroDivisionError: Cannot compute apr as the delegation amount is zero"
+                .to_string(),
         });
     }
 
@@ -83,6 +84,7 @@ mod tests {
             addr: Addr::unchecked("a1"),
             rewards: Decimal::one(),
             delegated_amount: Uint128::new(10),
+            self_delegated_amount: Uint128::new(5),
             commission: Decimal::one(),
             max_commission: Decimal::one(),
             timestamp: 1,
@@ -92,6 +94,7 @@ mod tests {
             addr: Addr::unchecked("a1"),
             rewards: u64_to_decimal(2),
             delegated_amount: Uint128::new(100),
+            self_delegated_amount: Uint128::new(10),
             commission: Decimal::one(),
             max_commission: Decimal::one(),
             timestamp: 2,
