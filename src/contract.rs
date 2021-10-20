@@ -28,6 +28,7 @@ pub fn instantiate(
     let state = State {
         vault_denom: msg.vault_denom.clone(),
         validators: vec![],
+        validators_account_addr: vec![],
         cron_timestamps: vec![],
         validator_index_for_next_cron: 0,
     };
@@ -62,7 +63,10 @@ pub fn execute(
         ExecuteMsg::RecordMetrics { timestamp } => {
             record_validator_metrics(deps, env, info, timestamp)
         }
-        ExecuteMsg::AddValidator { addr } => add_validator(deps, info, addr),
+        ExecuteMsg::AddValidator {
+            validator_opr_addr,
+            account_addr,
+        } => add_validator(deps, info, validator_opr_addr, account_addr),
         ExecuteMsg::UpdateConfig { batch_size } => update_config(deps, info, batch_size),
     }
 }
@@ -206,6 +210,7 @@ fn add_validator(
     deps: DepsMut,
     info: MessageInfo,
     validator_addr: Addr,
+    account_addr: Addr, // account address of the validator
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let config = CONFIG.load(deps.storage)?;
@@ -251,6 +256,7 @@ fn add_validator(
 
     STATE.update(deps.storage, |mut s| -> StdResult<_> {
         s.validators.push(validator_addr.clone());
+        s.validators_account_addr.push(account_addr);
         Ok(s)
     })?;
 
@@ -270,8 +276,9 @@ pub fn record_validator_metrics(
     if info.sender != manager {
         return Err(ContractError::Unauthorized {});
     }
-
-    let validators_to_record = get_validators_to_record(deps.storage, timestamp)?;
+    let validator_data = get_validators_to_record(deps.storage, timestamp)?;
+    let validators_to_record = validator_data.0;
+    let validators_to_record_acc = validator_data.1;
 
     if validators_to_record.is_empty() {
         return Ok(Response::new()
@@ -280,8 +287,13 @@ pub fn record_validator_metrics(
             .add_attribute("validators_left", "0"));
     }
 
-    let current_validators_metrics =
-        compute_current_metrics(&deps, env, &validators_to_record, timestamp)?;
+    let current_validators_metrics = compute_current_metrics(
+        &deps,
+        env,
+        &validators_to_record,
+        &validators_to_record_acc,
+        timestamp,
+    )?;
 
     let t = U64Key::new(timestamp);
     for metric in current_validators_metrics {
@@ -303,6 +315,7 @@ fn compute_current_metrics(
     deps: &DepsMut,
     env: Env,
     validators: &Vec<Addr>,
+    validators_account_addr: &Vec<Addr>, // account number of the validators
     timestamp: u64,
 ) -> Result<Vec<ValidatorMetrics>, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -314,6 +327,7 @@ fn compute_current_metrics(
     let querier = TerraQuerier::new(&deps.querier);
 
     let mut current_metrics: Vec<ValidatorMetrics> = vec![];
+    let mut ind_acc_addr = 0; // index pointer for validators_account_addr
 
     for validator_addr in validators {
         let delegation_opt = deps
@@ -354,8 +368,8 @@ fn compute_current_metrics(
         let current_delegated_amount = delegation.amount.amount.clone();
 
         let self_delegation_opt = deps.querier.query_delegation(
-            "terra1288dxhaf8l2sv6ela00l9eta6595tm2zwmyyuj",//This is the Account Address
-            "terravaloper1288dxhaf8l2sv6ela00l9eta6595tm2zw5gevp",//This is the Operator Address
+            validators_account_addr[ind_acc_addr].clone(), //This is the Account Address
+            validator_addr.clone(),                        //This is the Operator Address
         );
 
         // This is the self_delegation amount (delegation by validator)
@@ -374,6 +388,7 @@ fn compute_current_metrics(
             rewards_in_coins: delegation.accumulated_rewards.clone(),
             timestamp,
         });
+        ind_acc_addr = ind_acc_addr + 1;
     }
     Ok(current_metrics)
 }
@@ -447,12 +462,13 @@ fn get_total_rewards_in_vault_denom(
 fn get_validators_to_record(
     storage: &mut dyn Storage,
     timestamp: u64,
-) -> Result<Vec<Addr>, ContractError> {
+) -> Result<(Vec<Addr>, Vec<Addr>), ContractError> {
     let batch_size = CONFIG.load(storage)?.batch_size;
     let state = STATE.load(storage)?;
     let last_cron_time_opt = state.cron_timestamps.last();
     let validators = state.validators;
     let total_validators: u64 = validators.len().try_into().unwrap();
+    let validators_acc = state.validators_account_addr;
     let mut validator_index_for_next_cron = state.validator_index_for_next_cron;
 
     // If the Cron time is completely New (Update State)
@@ -467,7 +483,7 @@ fn get_validators_to_record(
     }
 
     if validator_index_for_next_cron.ge(&total_validators) {
-        return Ok(vec![]);
+        return Ok((vec![], vec![]));
     }
 
     // Examples
@@ -479,13 +495,14 @@ fn get_validators_to_record(
     let end = cmp::min(start + batch_size, total_validators);
 
     let validators_batch: Vec<Addr> = validators[(start as usize)..(end as usize)].to_vec();
+    let validators_acc_batch = validators_acc[(start as usize)..(end as usize)].to_vec();
 
     STATE.update(storage, |mut s| -> StdResult<_> {
         s.validator_index_for_next_cron = end;
         Ok(s)
     })?;
 
-    Ok(validators_batch)
+    Ok((validators_batch, validators_acc_batch))
 }
 
 fn get_amount_in_vault_denom(
@@ -629,19 +646,28 @@ mod tests {
     }
 
     #[test]
-    fn test_record_metrics(){
+    fn test_record_metrics() {
         let mut deps = mock_dependencies(&[]);
         let info = mock_info("creator", &[]);
         let env = mock_env();
-        let timestamp=10;
+        let timestamp = 10;
 
-        let _res= record_validator_metrics(deps.as_mut(), env, info, timestamp);
+        let _res = record_validator_metrics(deps.as_mut(), env, info, timestamp);
     }
 
     #[test]
-    fn test_get_all_validator_metrics(){
+    fn test_get_all_validator_metrics() {
         let deps = mock_dependencies(&[]);
-        let validator=Addr::unchecked("valid0001");
-        let _res=query_all_validator_metrics(deps.as_ref(),validator);
+        let validator = Addr::unchecked("valid0001");
+        let _res = query_all_validator_metrics(deps.as_ref(), validator);
+    }
+
+    #[test]
+    fn test_add_validator() {
+        let mut deps = mock_dependencies(&[]);
+        let info = mock_info("creator", &[]);
+        let validator_opr = Addr::unchecked("valid0001");
+        let validator_acc = Addr::unchecked("valid0002");
+        let _res = add_validator(deps.as_mut(), info, validator_opr, validator_acc);
     }
 }

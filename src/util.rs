@@ -2,7 +2,6 @@ use crate::state::ValidatorMetrics;
 use cosmwasm_bignumber::Decimal256;
 use cosmwasm_std::{Decimal, StdError, StdResult, Uint128};
 
-
 pub fn decimal_summation_in_256(a: Decimal, b: Decimal) -> Decimal {
     let a_u256: Decimal256 = a.into();
     let b_u256: Decimal256 = b.into();

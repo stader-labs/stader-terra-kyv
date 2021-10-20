@@ -8,6 +8,7 @@ use cw_storage_plus::{Item, Map, U64Key};
 pub struct State {
     pub vault_denom: String,
     pub validators: Vec<Addr>,
+    pub validators_account_addr: Vec<Addr>, //account addresses of validators
     pub cron_timestamps: Vec<u64>,
     pub validator_index_for_next_cron: u64,
 }

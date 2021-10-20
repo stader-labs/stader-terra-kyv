@@ -12,9 +12,16 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    RecordMetrics { timestamp: u64 }, // 12:00AM
-    AddValidator { addr: Addr },
-    UpdateConfig { batch_size: u64 },
+    RecordMetrics {
+        timestamp: u64,
+    }, // 12:00AM
+    AddValidator {
+        validator_opr_addr: Addr,
+        account_addr: Addr,
+    }, //validator's operator address,validator's account address
+    UpdateConfig {
+        batch_size: u64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
