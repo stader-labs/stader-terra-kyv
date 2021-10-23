@@ -80,7 +80,8 @@ mod tests {
     #[test]
     fn test_compute_apr() {
         let h1 = ValidatorMetrics {
-            addr: Addr::unchecked("a1"),
+            operator_addr: Addr::unchecked("a1"),
+            account_addr: Addr::unchecked("a2"),
             rewards: Decimal::one(),
             delegated_amount: Uint128::new(10),
             self_delegated_amount: Uint128::new(5),
@@ -90,7 +91,8 @@ mod tests {
             rewards_in_coins: vec![],
         };
         let h2 = ValidatorMetrics {
-            addr: Addr::unchecked("a1"),
+            operator_addr: Addr::unchecked("a1"),
+            account_addr: Addr::unchecked("a2"),
             rewards: u64_to_decimal(2),
             delegated_amount: Uint128::new(100),
             self_delegated_amount: Uint128::new(10),
