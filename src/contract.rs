@@ -3,7 +3,8 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ValidatorAprResponse};
 use crate::state::ValidatorAccounts;
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::util::{
-    compute_apr, decimal_multiplication_in_256, decimal_summation_in_256, uint128_to_decimal,
+    compute_apr, decimal_division_in_256, decimal_multiplication_in_256, decimal_summation_in_256,
+    uint128_to_decimal,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -298,13 +299,8 @@ pub fn record_validator_metrics(
             .add_attribute("validators_left", "0"));
     }
 
-    let current_validators_metrics = compute_current_metrics(
-        &deps,
-        env,
-        &validators_to_record,
-        // &validators_to_record_acc,
-        timestamp,
-    )?;
+    let current_validators_metrics =
+        compute_current_metrics(&deps, env, &validators_to_record, timestamp)?;
 
     let t = U64Key::new(timestamp);
     for metric in current_validators_metrics {
@@ -337,7 +333,6 @@ fn compute_current_metrics(
     let querier = TerraQuerier::new(&deps.querier);
 
     let mut current_metrics: Vec<ValidatorMetrics> = vec![];
-    let mut ind_acc_addr = 0; // index pointer for validators_account_addr
 
     for validator_addr in validators {
         let delegation_opt = deps.querier.query_delegation(
@@ -391,18 +386,35 @@ fn compute_current_metrics(
             Err(_) => Uint128::new(0),
         };
 
+        // this stores current_slashing pointer value
+        // if there are no prev metric then it's default value is 1.0
+        let mut current_slashing_pointer = Decimal::one();
+
+        // formula=(current_delegated_amount/prev_delegated_amount)*prev_slashing_pointer
+        if !current_metrics.is_empty() {
+            let most_recent_metric = current_metrics.last().unwrap();
+            current_slashing_pointer = decimal_division_in_256(
+                uint128_to_decimal(current_delegated_amount),
+                uint128_to_decimal(most_recent_metric.delegated_amount),
+            );
+            current_slashing_pointer = decimal_multiplication_in_256(
+                current_slashing_pointer,
+                most_recent_metric.slashing_pointer,
+            );
+        }
+
         current_metrics.push(ValidatorMetrics {
             operator_addr: validator_addr.operator_address.clone(),
             account_addr: validator_addr.account_address.clone(),
             rewards: decimal_summation_in_256(current_rewards_diff, previous_rewards),
             delegated_amount: current_delegated_amount,
             self_delegated_amount: self_delegation_amount,
+            slashing_pointer: current_slashing_pointer,
             commission: validator.commission,
             max_commission: validator.max_commission,
             rewards_in_coins: delegation.accumulated_rewards.clone(),
             timestamp,
         });
-        ind_acc_addr = ind_acc_addr + 1;
     }
     Ok(current_metrics)
 }
