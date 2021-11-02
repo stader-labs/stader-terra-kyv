@@ -81,7 +81,6 @@ mod tests {
     fn test_compute_apr() {
         let h1 = ValidatorMetrics {
             operator_addr: Addr::unchecked("a1"),
-            account_addr: Addr::unchecked("a2"),
             rewards: Decimal::one(),
             slashing_pointer: Decimal::percent(90),
             delegated_amount: Uint128::new(10),
@@ -93,7 +92,6 @@ mod tests {
         };
         let h2 = ValidatorMetrics {
             operator_addr: Addr::unchecked("a1"),
-            account_addr: Addr::unchecked("a2"),
             rewards: u64_to_decimal(2),
             slashing_pointer: Decimal::percent(98),
             delegated_amount: Uint128::new(100),

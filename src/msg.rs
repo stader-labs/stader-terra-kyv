@@ -17,7 +17,7 @@ pub enum ExecuteMsg {
     }, // 12:00AM
     AddValidator {
         validator_opr_addr: Addr,
-        account_addr: Addr,
+        account_addr: String,
     }, //validator's operator address,validator's account address
     UpdateConfig {
         batch_size: u64,

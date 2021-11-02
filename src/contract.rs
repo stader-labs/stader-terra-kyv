@@ -216,7 +216,7 @@ fn add_validator(
     deps: DepsMut,
     info: MessageInfo,
     validator_addr: Addr,
-    account_addr: Addr, // account address of the validator
+    wallet_addrress: String, // account address of the validator
 ) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let config = CONFIG.load(deps.storage)?;
@@ -264,10 +264,13 @@ fn add_validator(
         },
     };
 
-    STATE.update(deps.storage, |mut s| -> StdResult<_> {
+    // since deps is borrowed as mutable below, borrowing it immutably here
+    let validator_account_addr = deps.api.addr_validate(&wallet_addrress).unwrap();
+
+    STATE.update(deps.storage, |mut s: State| -> StdResult<_> {
         let current_validator = ValidatorAccounts {
             operator_address: validator_addr.clone(),
-            account_address: account_addr,
+            account_address: validator_account_addr,
         };
         s.validators.push(current_validator);
         Ok(s)
@@ -289,8 +292,8 @@ pub fn record_validator_metrics(
     if info.sender != manager {
         return Err(ContractError::Unauthorized {});
     }
-    let validator_data = get_validators_to_record(deps.storage, timestamp)?;
-    let validators_to_record = validator_data;
+
+    let validators_to_record = get_validators_to_record(deps.storage, timestamp)?;
 
     if validators_to_record.is_empty() {
         return Ok(Response::new()
@@ -390,22 +393,21 @@ fn compute_current_metrics(
         // if there are no prev metric then it's default value is 1.0
         let mut current_slashing_pointer = Decimal::one();
 
-        // formula=(current_delegated_amount/prev_delegated_amount)*prev_slashing_pointer
+        // current_slashing_pointer=(current_delegated_amount/prev_delegated_amount)*prev_slashing_pointer
         if !current_metrics.is_empty() {
-            let most_recent_metric = current_metrics.last().unwrap();
+            let delegation_change_ratio = current_metrics.last().unwrap();
             current_slashing_pointer = decimal_division_in_256(
                 uint128_to_decimal(current_delegated_amount),
-                uint128_to_decimal(most_recent_metric.delegated_amount),
+                uint128_to_decimal(delegation_change_ratio.delegated_amount),
             );
             current_slashing_pointer = decimal_multiplication_in_256(
                 current_slashing_pointer,
-                most_recent_metric.slashing_pointer,
+                delegation_change_ratio.slashing_pointer,
             );
         }
 
         current_metrics.push(ValidatorMetrics {
             operator_addr: validator_addr.operator_address.clone(),
-            account_addr: validator_addr.account_address.clone(),
             rewards: decimal_summation_in_256(current_rewards_diff, previous_rewards),
             delegated_amount: current_delegated_amount,
             self_delegated_amount: self_delegation_amount,
@@ -700,7 +702,7 @@ mod tests {
         let mut deps = mock_dependencies(&[]);
         let info = mock_info("creator", &[]);
         let validator_opr = Addr::unchecked("valid0001");
-        let validator_acc = Addr::unchecked("valid0002");
+        let validator_acc = Addr::unchecked("valid0002").to_string();
         let _res = add_validator(deps.as_mut(), info, validator_opr, validator_acc);
     }
 }

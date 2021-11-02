@@ -28,7 +28,6 @@ pub struct ValidatorAccounts {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ValidatorMetrics {
     pub operator_addr: Addr,       // Validator's operator address
-    pub account_addr: Addr,        // Validator's account address
     pub rewards: Decimal,          // these are cummulative rewards
     pub delegated_amount: Uint128, // For tracking the amount delegated (With slashing)
     pub self_delegated_amount: Uint128,
