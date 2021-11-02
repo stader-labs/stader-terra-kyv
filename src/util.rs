@@ -2,7 +2,6 @@ use crate::state::ValidatorMetrics;
 use cosmwasm_bignumber::Decimal256;
 use cosmwasm_std::{Decimal, StdError, StdResult, Uint128};
 
-
 pub fn decimal_summation_in_256(a: Decimal, b: Decimal) -> Decimal {
     let a_u256: Decimal256 = a.into();
     let b_u256: Decimal256 = b.into();
@@ -48,7 +47,8 @@ pub fn compute_apr(
 ) -> StdResult<Decimal> {
     if h1.delegated_amount.is_zero() {
         return Err(StdError::GenericErr {
-            msg: "ZeroDivisionError: Cannot compute apr as the delegation amount is zero".to_string(),
+            msg: "ZeroDivisionError: Cannot compute apr as the delegation amount is zero"
+                .to_string(),
         });
     }
 
@@ -80,18 +80,22 @@ mod tests {
     #[test]
     fn test_compute_apr() {
         let h1 = ValidatorMetrics {
-            addr: Addr::unchecked("a1"),
+            operator_addr: Addr::unchecked("a1"),
             rewards: Decimal::one(),
+            slashing_pointer: Decimal::percent(90),
             delegated_amount: Uint128::new(10),
+            self_delegated_amount: Uint128::new(5),
             commission: Decimal::one(),
             max_commission: Decimal::one(),
             timestamp: 1,
             rewards_in_coins: vec![],
         };
         let h2 = ValidatorMetrics {
-            addr: Addr::unchecked("a1"),
+            operator_addr: Addr::unchecked("a1"),
             rewards: u64_to_decimal(2),
+            slashing_pointer: Decimal::percent(98),
             delegated_amount: Uint128::new(100),
+            self_delegated_amount: Uint128::new(10),
             commission: Decimal::one(),
             max_commission: Decimal::one(),
             timestamp: 2,

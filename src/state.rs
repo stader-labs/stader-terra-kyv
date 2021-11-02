@@ -7,7 +7,7 @@ use cw_storage_plus::{Item, Map, U64Key};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
     pub vault_denom: String,
-    pub validators: Vec<Addr>,
+    pub validators: Vec<ValidatorAccounts>,
     pub cron_timestamps: Vec<u64>,
     pub validator_index_for_next_cron: u64,
 }
@@ -20,10 +20,18 @@ pub struct Config {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ValidatorAccounts {
+    pub operator_address: Addr,
+    pub account_address: Addr,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ValidatorMetrics {
-    pub addr: Addr,                // Validator Address
+    pub operator_addr: Addr,       // Validator's operator address
     pub rewards: Decimal,          // these are cummulative rewards
     pub delegated_amount: Uint128, // For tracking the amount delegated (With slashing)
+    pub self_delegated_amount: Uint128,
+    pub slashing_pointer: Decimal, // to track the slashed amount (current_delegated_amount/prev_delegated_amount)*prev_slashing_pointer
     pub commission: Decimal,
     pub max_commission: Decimal,
     pub timestamp: u64,
