@@ -50,7 +50,7 @@ pub fn instantiate(
             "amount_to_stake_per_validator",
             msg.amount_to_stake_per_validator,
         )
-        .add_attribute("vault_denom", msg.vault_denom.clone().to_string()))
+        .add_attribute("vault_denom", msg.vault_denom))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -134,10 +134,10 @@ fn query_validator_apr(
 
     let h2 = METRICS_HISTORY.load(deps.storage, (&addr, U64Key::new(timestamp2)))?;
 
-    return Ok(ValidatorAprResponse {
+    Ok(ValidatorAprResponse {
         addr,
         apr: compute_apr(&h1, &h2, timestamp2 - timestamp1)?,
-    });
+    })
 }
 
 fn query_validators_aprs_by_interval(
@@ -181,7 +181,7 @@ fn query_validators_aprs_by_interval(
                 apr,
             });
         };
-        start = start + 1;
+        start += 1;
     }
 
     Ok(response)
@@ -259,7 +259,7 @@ fn add_validator(
     let msg = StakingMsg::Delegate {
         validator: validator_addr.to_string(),
         amount: Coin {
-            denom: vault_denom.clone(),
+            denom: vault_denom,
             amount: amount_to_stake_per_validator,
         },
     };
@@ -324,7 +324,7 @@ pub fn record_validator_metrics(
 fn compute_current_metrics(
     deps: &DepsMut,
     env: Env,
-    validators: &Vec<ValidatorAccounts>,
+    validators: &[ValidatorAccounts],
     timestamp: u64,
 ) -> Result<Vec<ValidatorMetrics>, ContractError> {
     let state = STATE.load(deps.storage)?;
@@ -345,7 +345,7 @@ fn compute_current_metrics(
 
         if delegation_opt.is_none() {
             return Err(ContractError::NoDelegationFound {
-                manager: env.contract.address.clone(),
+                manager: env.contract.address,
                 validator: validator_addr.operator_address.clone(),
             });
         }
@@ -376,7 +376,7 @@ fn compute_current_metrics(
         );
 
         // This is the new Delegated amount after slashing Ex: (10 => 9.8 etc.,)
-        let current_delegated_amount = delegation.amount.amount.clone();
+        let current_delegated_amount = delegation.amount.amount;
 
         let self_delegation_opt = deps.querier.query_delegation(
             validator_addr.account_address.clone(), //This is the Account Address
@@ -434,10 +434,8 @@ fn get_diff_in_rewards_from_last_cron(
     }
 
     let last_cron_time = last_cron_time_opt.unwrap();
-    let previous_metrics_opt = METRICS_HISTORY.may_load(
-        deps.storage,
-        (&validator_addr, U64Key::new(last_cron_time.clone())),
-    )?;
+    let previous_metrics_opt =
+        METRICS_HISTORY.may_load(deps.storage, (validator_addr, U64Key::new(*last_cron_time)))?;
 
     // If validaor is added after the prevous cron run, then there wont be any prev history for this validator
     if previous_metrics_opt.is_none() {
@@ -456,20 +454,20 @@ fn get_diff_in_rewards_from_last_cron(
         .map(|reward| {
             // Find matching denom reward in the previous run
             let prev_reward_opt = previous_rewards_map.get(&reward.denom);
-            return match prev_reward_opt {
+            match prev_reward_opt {
                 Some(prev_reward) => Coin {
                     denom: reward.denom,
                     amount: reward.amount.sub(prev_reward), // Subtract the previous denom reward amount with the current
                 },
                 None => reward, // Last rewards vec does not contain this particular denom reward
-            };
+            }
         })
         .collect();
-    return Ok((diff_in_rewards, previous_metrics.rewards));
+    Ok((diff_in_rewards, previous_metrics.rewards))
 }
 
 fn get_total_rewards_in_vault_denom(
-    rewards: &Vec<Coin>,
+    rewards: &[Coin],
     vault_denom: &String,
     exchange_rates_map: &mut HashMap<String, Decimal>,
     querier: &TerraQuerier,
@@ -656,7 +654,7 @@ fn query_validators_metrics_by_timestamp(
                 U64Key::new(timestamp),
             ),
         )?);
-        start = start + 1;
+        start += 1;
     }
     Ok(res)
 }
