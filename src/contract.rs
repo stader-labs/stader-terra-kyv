@@ -393,9 +393,14 @@ fn compute_current_metrics(
         // if there are no prev metric then it's default value is 1.0
         let mut current_slashing_pointer = Decimal::one();
 
+        // this is a vector of all the metrics of current validator
+        let vector_delegation_change_ratio =
+            query_all_validator_metrics(deps.as_ref(), validator_addr.operator_address.clone())
+                .unwrap();
+
         // current_slashing_pointer=(current_delegated_amount/prev_delegated_amount)*prev_slashing_pointer
-        if !current_metrics.is_empty() {
-            let delegation_change_ratio = current_metrics.last().unwrap();
+        if !vector_delegation_change_ratio.is_empty() {
+            let delegation_change_ratio = &vector_delegation_change_ratio.last().unwrap().1;
             current_slashing_pointer = decimal_division_in_256(
                 uint128_to_decimal(current_delegated_amount),
                 uint128_to_decimal(delegation_change_ratio.delegated_amount),
@@ -539,22 +544,20 @@ fn get_amount_in_vault_denom(
 ) -> Option<Decimal> {
     if exchange_rates_map.contains_key(&coin.denom) {
         let exchange_rate = exchange_rates_map.get(&coin.denom).unwrap();
-        return Some(convert_amount_to_valut_denom(coin, exchange_rate.clone()));
+        Some(convert_amount_to_valut_denom(coin, *exchange_rate))
     } else {
         let rate_opt = query_exchange_rate(querier, vault_denom, &coin.denom);
-        if rate_opt.is_none() {
-            return None;
-        }
+        rate_opt?;
         let exchange_rate = rate_opt.unwrap();
         exchange_rates_map.insert(coin.denom.clone(), exchange_rate);
-        return Some(convert_amount_to_valut_denom(coin, exchange_rate));
+        Some(convert_amount_to_valut_denom(coin, exchange_rate))
     }
 }
 
 fn convert_amount_to_valut_denom(coin: &Coin, exchange_rate: Decimal) -> Decimal {
     let amount = uint128_to_decimal(coin.amount);
-    let amount_in_vault_denom = decimal_multiplication_in_256(amount, exchange_rate);
-    amount_in_vault_denom
+
+    decimal_multiplication_in_256(amount, exchange_rate)
 }
 
 fn query_exchange_rate(
