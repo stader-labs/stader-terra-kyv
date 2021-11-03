@@ -8,11 +8,11 @@ use crate::util::{
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::Decimal;
 use cosmwasm_std::{
     to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Order, Response, StakingMsg,
     StdError, StdResult, Storage, Uint128,
 };
+use cosmwasm_std::{BankMsg, Decimal};
 use cw_storage_plus::{Bound, U64Key};
 use std::cmp;
 use std::collections::HashMap;
@@ -69,6 +69,10 @@ pub fn execute(
             account_addr,
         } => add_validator(deps, info, validator_opr_addr, account_addr),
         ExecuteMsg::UpdateConfig { batch_size } => update_config(deps, info, batch_size),
+        ExecuteMsg::RemoveValidator {
+            validator_oper_addr,
+        } => remove_validator(deps, info, validator_oper_addr),
+        ExecuteMsg::WithdrawFunds { amount } => withdraw_funds(deps, info, amount),
     }
 }
 
@@ -281,6 +285,66 @@ fn add_validator(
         .add_attribute("method", "add_validator"))
 }
 
+fn remove_validator(
+    deps: DepsMut,
+    info: MessageInfo,
+    val_opr_addr: Addr,
+) -> Result<Response, ContractError> {
+    let mut state = STATE.load(deps.storage)?;
+    let config = CONFIG.load(deps.storage)?;
+
+    let vault_denom = state.vault_denom.clone();
+    let amount_to_stake_per_validator = config.amount_to_stake_per_validator;
+
+    // can only be called by manager
+    if info.sender != config.manager {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let val_len = state.validators.len();
+    let other_validators = state
+        .validators
+        .into_iter()
+        .filter(|addr| !addr.operator_address.eq(&val_opr_addr))
+        .collect::<Vec<ValidatorAccounts>>();
+    if other_validators.len().eq(&val_len) {
+        return Err(ContractError::ValidatorDoesNotExist {});
+    }
+
+    let msg = StakingMsg::Undelegate {
+        validator: val_opr_addr.to_string(),
+        amount: Coin {
+            denom: vault_denom,
+            amount: amount_to_stake_per_validator,
+        },
+    };
+
+    state.validators = other_validators;
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_messages(vec![msg])
+        .add_attribute("method", "remove_validator"))
+}
+
+// Anyone can call this but funds will only be sent back to manager.
+fn withdraw_funds(
+    deps: DepsMut,
+    _info: MessageInfo,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let state = STATE.load(deps.storage)?;
+
+    if amount.is_zero() {
+        return Err(ContractError::ZeroAmount {});
+    }
+    Ok(Response::new().add_message(BankMsg::Send {
+        to_address: config.manager.to_string(),
+        amount: vec![Coin::new(amount.u128(), state.vault_denom)],
+    }))
+}
+
 pub fn record_validator_metrics(
     deps: DepsMut,
     env: Env,
@@ -356,7 +420,7 @@ fn compute_current_metrics(
         // if suddenly validators drop out of the validator set, either due to jailing or some other mishap.
         if validator_opt.is_none() {
             continue;
-        }
+        } // Handle this edge case when validator previous timestamp does not match state.cron_timings.last() entry.
 
         let validator = validator_opt.unwrap();
         let delegation = delegation_opt.unwrap();
@@ -393,9 +457,14 @@ fn compute_current_metrics(
         // if there are no prev metric then it's default value is 1.0
         let mut current_slashing_pointer = Decimal::one();
 
+        // this is a vector of all the metrics of current validator
+        let vector_delegation_change_ratio =
+            query_all_validator_metrics(deps.as_ref(), validator_addr.operator_address.clone())
+                .unwrap();
+
         // current_slashing_pointer=(current_delegated_amount/prev_delegated_amount)*prev_slashing_pointer
-        if !current_metrics.is_empty() {
-            let delegation_change_ratio = current_metrics.last().unwrap();
+        if !vector_delegation_change_ratio.is_empty() {
+            let delegation_change_ratio = &vector_delegation_change_ratio.last().unwrap().1;
             current_slashing_pointer = decimal_division_in_256(
                 uint128_to_decimal(current_delegated_amount),
                 uint128_to_decimal(delegation_change_ratio.delegated_amount),
@@ -539,22 +608,20 @@ fn get_amount_in_vault_denom(
 ) -> Option<Decimal> {
     if exchange_rates_map.contains_key(&coin.denom) {
         let exchange_rate = exchange_rates_map.get(&coin.denom).unwrap();
-        return Some(convert_amount_to_valut_denom(coin, exchange_rate.clone()));
+        Some(convert_amount_to_valut_denom(coin, *exchange_rate))
     } else {
         let rate_opt = query_exchange_rate(querier, vault_denom, &coin.denom);
-        if rate_opt.is_none() {
-            return None;
-        }
+        rate_opt?;
         let exchange_rate = rate_opt.unwrap();
         exchange_rates_map.insert(coin.denom.clone(), exchange_rate);
-        return Some(convert_amount_to_valut_denom(coin, exchange_rate));
+        Some(convert_amount_to_valut_denom(coin, exchange_rate))
     }
 }
 
 fn convert_amount_to_valut_denom(coin: &Coin, exchange_rate: Decimal) -> Decimal {
     let amount = uint128_to_decimal(coin.amount);
-    let amount_in_vault_denom = decimal_multiplication_in_256(amount, exchange_rate);
-    amount_in_vault_denom
+
+    decimal_multiplication_in_256(amount, exchange_rate)
 }
 
 fn query_exchange_rate(
@@ -700,7 +767,7 @@ mod tests {
         let mut deps = mock_dependencies(&[]);
         let info = mock_info("creator", &[]);
         let validator_opr = Addr::unchecked("valid0001");
-        let validator_acc = Addr::unchecked("valid0002").to_string();
+        let validator_acc = Addr::unchecked("adsf").to_string();
         let _res = add_validator(deps.as_mut(), info, validator_opr, validator_acc);
     }
 }

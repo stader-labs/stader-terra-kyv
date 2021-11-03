@@ -38,6 +38,7 @@ pub struct ValidatorMetrics {
     pub rewards_in_coins: Vec<Coin>,
 }
 
+// (Validator Addr, Timestamp)
 pub const METRICS_HISTORY: Map<(&Addr, U64Key), ValidatorMetrics> =
     Map::new("validator_metrics_history");
 
