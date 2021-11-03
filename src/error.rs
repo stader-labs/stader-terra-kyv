@@ -29,4 +29,7 @@ pub enum ContractError {
 
     #[error("Batch size cannot be zero")]
     BatchSizeCannotBeZero {},
+
+    #[error("Amount cannot be zero")]
+    ZeroAmount {},
 }

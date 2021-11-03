@@ -22,6 +22,12 @@ pub enum ExecuteMsg {
     UpdateConfig {
         batch_size: u64,
     },
+    RemoveValidator {
+        validator_oper_addr: Addr,
+    },
+    WithdrawFunds {
+        amount: Uint128,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
