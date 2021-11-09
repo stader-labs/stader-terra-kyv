@@ -730,7 +730,66 @@ fn query_validators_metrics_by_timestamp(
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, Uint128};
+    use crate::contract::{instantiate};
+    use cosmwasm_std::{coins, Uint128,Validator,FullDelegation};
+    use crate::msg::{InstantiateMsg};
+    
+
+    fn get_validators() -> Vec<Validator> {
+        vec![
+            Validator {
+                address: "valid0001".to_string(),
+                commission: Decimal::zero(),
+                max_commission: Decimal::zero(),
+                max_change_rate: Decimal::zero(),
+            },
+            Validator {
+                address: "valid0002".to_string(),
+                commission: Decimal::zero(),
+                max_commission: Decimal::zero(),
+                max_change_rate: Decimal::zero(),
+            },
+            Validator {
+                address: "valid0003".to_string(),
+                commission: Decimal::zero(),
+                max_commission: Decimal::zero(),
+                max_change_rate: Decimal::zero(),
+            },
+        ]
+    }
+
+    fn get_delegations(mock_env:Addr) -> Vec<FullDelegation> {
+        vec![
+            FullDelegation {
+                delegator: Addr::unchecked("valid0006"),
+                validator: "valid0001".to_string(),
+                amount: Coin::new(1000, "token"),
+                can_redelegate: Coin::new(1000, "utest"),
+                accumulated_rewards: vec![Coin::new(20, "utest"), Coin::new(30, "urew1")],
+            },
+            FullDelegation {
+                delegator: mock_env.clone(),
+                validator: "valid0001".to_string(),
+                amount: Coin::new(1000, "utest"),
+                can_redelegate: Coin::new(0, "utest"),
+                accumulated_rewards: vec![Coin::new(40, "utest"), Coin::new(60, "urew1")],
+            },
+            FullDelegation {
+                delegator: Addr::unchecked("valid0007"),
+                validator: "valid0002".to_string(),
+                amount: Coin::new(0, "utest"),
+                can_redelegate: Coin::new(0, "utest"),
+                accumulated_rewards: vec![],
+            },
+            FullDelegation {
+                delegator: mock_env.clone(),
+                validator: "valid0002".to_string(),
+                amount: Coin::new(1000, "utest"),
+                can_redelegate: Coin::new(0, "utest"),
+                accumulated_rewards: vec![Coin::new(40, "utest"), Coin::new(60, "urew1")],
+            },
+        ]
+    }
 
     #[test]
     fn test_instantiate() {
@@ -741,8 +800,10 @@ mod tests {
             vault_denom: "luna".to_string(),
             batch_size: 10,
         };
+
         let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(0, res.messages.len());
     }
 
     #[test]
@@ -752,22 +813,210 @@ mod tests {
         let env = mock_env();
         let timestamp = 10;
 
-        let _res = record_validator_metrics(deps.as_mut(), env, info, timestamp);
+        let valid1 = Addr::unchecked("valid0001");//operator address for first validator
+        // let valid2 = Addr::unchecked("valid0002");//operator address for second validator
+        
+        let valid6 = String::from("valid0006");//account address for first validator
+        // let valid7 = String::from("valid0007");//account address for second validator
+
+        let instantiate_msg = InstantiateMsg {
+            amount_to_stake_per_validator: Uint128::new(10),
+            vault_denom: "luna".to_string(),
+            batch_size: 10,
+        };
+
+        instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+        deps.querier
+            .update_staking("test", &*get_validators(), &*get_delegations(env.contract
+            .address.clone()));
+
+        //adding one validator with 10 tokens
+        let pools_info = mock_info("creator", &coins(10, "token"));
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            pools_info.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid1.clone(),
+                account_addr: valid6.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+
+        //checking if record_metrics is working for one validator
+        let res = record_validator_metrics(deps.as_mut(), env.clone(), info.clone(), timestamp).unwrap();
+        assert_eq!(0,res.messages.len());
+
+        //  Sending info of another sender to check if Unauthorized error response working or not
+        let secinfo=mock_info("Validator0001",&[]);
+
+        let err=record_validator_metrics(deps.as_mut(), env.clone(), secinfo, timestamp).unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        // checking if pushing pushing a validator with no delegations give out no delegations found error.
+
+        //adding validator without any delegation (adding valid0003 as it is present in validators but not in delegations)
+        let valid3 = Addr::unchecked("valid0003");
+        let valid8 = String::from("valid0008");
+        
+        let _res = execute(
+            deps.as_mut(),
+            env.clone(),
+            pools_info.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid3.clone(),
+                account_addr: valid8.clone(),
+            },
+        );
+
+        let err = record_validator_metrics(deps.as_mut(), env.clone(), info.clone(), timestamp).unwrap_err();
+        // println!("{:?}",err);
+        assert!( matches!( err , ContractError::NoDelegationFound{ manager:_env, validator:_valid1 } ) );    
     }
 
     #[test]
     fn test_get_all_validator_metrics() {
-        let deps = mock_dependencies(&[]);
-        let validator = Addr::unchecked("valid0001");
-        let _res = query_all_validator_metrics(deps.as_ref(), validator);
+        let mut deps = mock_dependencies(&[]);
+        let info = mock_info("creator", &[]);
+        let env = mock_env();
+        let timestamp = 10;
+
+        let valid1 = Addr::unchecked("valid0001");//operator address for first validator
+        
+        let valid6 = String::from("valid0006");//account address for first validator
+
+        let instantiate_msg = InstantiateMsg {
+            amount_to_stake_per_validator: Uint128::new(10),
+            vault_denom: "luna".to_string(),
+            batch_size: 10,
+        };
+
+        instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+        deps.querier
+            .update_staking("test", &*get_validators(), &*get_delegations(env.contract
+            .address.clone()));
+
+        //checking if query_all_validator_metrics return empty vector or not when no validator is added
+        let res=query_all_validator_metrics(deps.as_ref(), valid1.clone()).unwrap();
+        assert_eq!(res.len(),0);
+
+        //adding one validator with 10 tokens
+        let pools_info = mock_info("creator", &coins(10, "token"));
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            pools_info.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid1.clone(),
+                account_addr: valid6.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+
+        //recording metrics for this one validator
+        let res = record_validator_metrics(deps.as_mut(), env.clone(), info.clone(), timestamp).unwrap();
+        assert_eq!(0,res.messages.len());
+
+
+        // checking if query_all_validator_metrics returns metrics or not after adding a validator
+        let res=query_all_validator_metrics(deps.as_ref(), valid1.clone()).unwrap();
+        // println!("{:?}",res);
+        assert_eq!(res.len(),1);
+
+        
     }
 
     #[test]
     fn test_add_validator() {
+
         let mut deps = mock_dependencies(&[]);
         let info = mock_info("creator", &[]);
-        let validator_opr = Addr::unchecked("valid0001");
-        let validator_acc = Addr::unchecked("adsf").to_string();
-        let _res = add_validator(deps.as_mut(), info, validator_opr, validator_acc);
+        let env = mock_env();
+
+        let valid1 = Addr::unchecked("valid0001");
+        let valid2 = String::from("valid0002");
+
+        let instantiate_msg = InstantiateMsg {
+            amount_to_stake_per_validator: Uint128::new(10),
+            vault_denom: "luna".to_string(),
+            batch_size: 10,
+        };
+
+        instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+        deps.querier
+            .update_staking("test", &*get_validators(), &*get_delegations(env.contract.address.clone()));
+
+        let t1 = U64Key::new(10);
+
+        assert!(METRICS_HISTORY
+            .may_load(deps.as_mut().storage, (&valid1,t1.clone()))
+            .unwrap()
+            .is_none());
+
+        // Sending info of another sender to check if Unauthorized error response working or not
+        let secinfo=mock_info("Validator0001",&[]);
+
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            secinfo.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid1.clone(),
+                account_addr: valid2.clone(),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        //adding one validator with 8 tokens(to test the check of min_amount_to_stake_per_validator)
+        let pools_info = mock_info("creator", &coins(8, "token"));
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            pools_info.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid1.clone(),
+                account_addr: valid2.clone(),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(res,ContractError::InsufficientFunds{}) );
+
+        //adding one validator with 10 tokens
+        let pools_info = mock_info("creator", &coins(10, "token"));
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            pools_info.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid1.clone(),
+                account_addr: valid2.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(res.messages.len(), 1);
+
+        //checking if adding the same validator again gives validator already exists error or not
+        let err = execute(
+            deps.as_mut(),
+            env.clone(),
+            pools_info.clone(),
+            ExecuteMsg::AddValidator {
+                validator_opr_addr:valid1.clone(),
+                account_addr: valid2.clone(),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::ValidatorAlreadyExists {}));
+
+        // let mut deps = mock_dependencies(&[]);
+        // let info = mock_info("creator", &[]);
+        // let env=mock_env();
+
+        // let validator_opr = Addr::unchecked("valid0001");
+        // let validator_acc = Addr::unchecked("adsf").to_string();
+        // let _res = add_validator(deps.as_mut(), info, validator_opr, validator_acc);
     }
 }
