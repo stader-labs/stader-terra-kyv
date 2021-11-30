@@ -129,11 +129,11 @@ fn delete_metrics_for_timestamp(
     // }
 
 
-    return Ok(Response::new()
+    Ok(Response::new()
         .add_attribute("method", "delete_metrics_for_timestamp")
         .add_attribute("deleted_timestamp", timestamp.to_string())
         .add_attribute("validators_left", (state.validators.len() - validator_end).to_string())
-        .add_attribute("next_validator_idx", validator_end.to_string()));
+        .add_attribute("next_validator_idx", validator_end.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -411,13 +411,13 @@ fn delete_metrics_for_validator(
     query_timestamps(deps.as_ref()).unwrap()[timestamp_start..timestamp_end]
         .iter()
         .for_each(|timestamp| {
-            METRICS_HISTORY.remove(deps.storage,(&val_address, U64Key::from(timestamp.clone())));
+            METRICS_HISTORY.remove(deps.storage,(&val_address, U64Key::from(*timestamp)));
         });
 
-    return Ok(Response::new()
+    Ok(Response::new()
         .add_attribute("method", "remove_metrics_for_validator")
         .add_attribute("msg", "All metrics are removed for the given validator and timestamp range")
-        .add_attribute("timestamps_left", (state.cron_timestamps.len() - timestamp_end).to_string()));
+        .add_attribute("timestamps_left", (state.cron_timestamps.len() - timestamp_end).to_string()))
 }
 
 // Anyone can call this but funds will only be sent back to manager.
@@ -632,7 +632,7 @@ fn get_diff_in_rewards_from_last_cron(
 
 fn get_total_rewards_in_vault_denom(
     rewards: &[Coin],
-    vault_denom: &String,
+    vault_denom: &str,
     exchange_rates_map: &mut HashMap<String, Decimal>,
     querier: &TerraQuerier,
 ) -> Decimal {
@@ -642,8 +642,8 @@ fn get_total_rewards_in_vault_denom(
         // If not present we fetch the exchange rate and add it to the map before calculating reward
         let reward_for_coin =
             get_amount_in_vault_denom(coin, vault_denom, exchange_rates_map, querier);
-        if reward_for_coin.is_some() {
-            current_rewards = decimal_summation_in_256(reward_for_coin.unwrap(), current_rewards);
+        if let Some(converted_from_vault) = reward_for_coin {
+            current_rewards = decimal_summation_in_256(converted_from_vault, current_rewards);
         } // If exchange rate is not fetchable then we skip such reward ?
     }
     current_rewards
@@ -698,7 +698,7 @@ fn get_validators_to_record(
 
 fn get_amount_in_vault_denom(
     coin: &Coin,
-    vault_denom: &String,
+    vault_denom: &str,
     exchange_rates_map: &mut HashMap<String, Decimal>, // Try to bring it outside (As we are mutating a func param)
     querier: &TerraQuerier,
 ) -> Option<Decimal> {
@@ -722,8 +722,8 @@ fn convert_amount_to_valut_denom(coin: &Coin, exchange_rate: Decimal) -> Decimal
 
 fn query_exchange_rate(
     querier: &TerraQuerier,
-    vault_denom: &String,
-    coin_denom: &String,
+    vault_denom: &str,
+    coin_denom: &str,
 ) -> Option<Decimal> {
     let result = querier.query_exchange_rates(coin_denom, vec![vault_denom]);
     if result.is_err() {
@@ -828,13 +828,13 @@ mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage};
     use cosmwasm_std::{coins, OwnedDeps, Uint128};
 
-    const TEST_VALIDATOR_OPR_ADDR: &'static str = "valid0001";
-    const TEST_VALIDATOR_ACC_ADDR: &'static str = "validacc001";
-    const TEST_VALIDATOR_OPR_ADDR_2: &'static str = "valid0002";
-    const TEST_VALIDATOR_ACC_ADDR_2: &'static str = "validacc002";
-    const TEST_OWNER_ADDR: &'static str = "owner001";
+    const TEST_VALIDATOR_OPR_ADDR: &str = "valid0001";
+    const TEST_VALIDATOR_ACC_ADDR: &str = "validacc001";
+    const TEST_VALIDATOR_OPR_ADDR_2: &str = "valid0002";
+    const TEST_VALIDATOR_ACC_ADDR_2: &str = "validacc002";
+    const TEST_OWNER_ADDR: &str = "owner001";
 
-    const TEST_DENOM: &'static str = "luna";
+    const TEST_DENOM: &str = "luna";
     const TEST_TIMESTAMP_1:u64 = 1638180000000;
     const TEST_TIMESTAMP_2:u64 = 1638190000000;
 
@@ -844,7 +844,7 @@ mod tests {
         let coin = Coin::new(1000, TEST_DENOM);
         let msg_info = MessageInfo {
             sender: Addr::unchecked(TEST_OWNER_ADDR),
-            funds: vec![coin.clone()]
+            funds: vec![coin]
         };
         let instantiate_msg = InstantiateMsg {
             vault_denom: TEST_DENOM.to_string(),
@@ -1017,7 +1017,7 @@ mod tests {
             slashing_pointer: Default::default(),
             commission: Default::default(),
             max_commission: Default::default(),
-            timestamp: timestamp.clone(),
+            timestamp: timestamp,
             rewards_in_coins: vec![]
         }
     }
