@@ -28,6 +28,16 @@ pub enum ExecuteMsg {
     WithdrawFunds {
         amount: Uint128,
     },
+    DeleteMetricsForTimestamp {
+        timestamp: u64,
+        validator_idx: u64,
+        validator_ct: u64
+    }, // used to delete all metrics associated with the timestamp, along with the timestamp record
+    DeleteMetricsForValidator {
+        validator_opr_addr: Addr,
+        timestamp_idx: u64,
+        timestamp_ct: u64
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -32,4 +32,10 @@ pub enum ContractError {
 
     #[error("Amount cannot be zero")]
     ZeroAmount {},
+
+    #[error("No metrics found for the given timestamp range")]
+    TimestampOutOfRange {},
+
+    #[error("No metrics found for given timestamp, for validators in given range")]
+    ValidatorOutOfRange {},
 }
