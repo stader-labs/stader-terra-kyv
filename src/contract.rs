@@ -83,6 +83,7 @@ pub fn execute(
             validator_ct,
         } => delete_metrics_for_timestamp(
             deps,
+            info,
             timestamp,
             validator_idx as usize,
             validator_ct as usize,
@@ -94,19 +95,63 @@ pub fn execute(
             timestamp_ct,
         } => delete_metrics_for_validator(
             deps,
+            info,
             validator_opr_addr,
             timestamp_idx as usize,
             timestamp_ct as usize,
         ),
+
+        ExecuteMsg::RemoveTimestamp { timestamp_idx } => delete_timestamp(deps, info, timestamp_idx)
     }
+}
+
+//note: this is also inefficient, potentially O(T), due to array deletion. not sure if
+// cosmwasm library optimizes this.
+fn delete_timestamp(
+    deps: DepsMut,
+    info: MessageInfo,
+    timestamp: u64) -> Result<Response, ContractError> {
+
+    // can only be called by manager
+    if !sender_is_manager(&deps, &info) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let mut state = STATE.load(deps.storage)?;
+    let existing_timestamps_length = state.cron_timestamps.len();
+
+    let new_timestamps = state.cron_timestamps.into_iter()
+        .filter(|state_tstamp| {state_tstamp.ne(&timestamp)})
+        .collect::<Vec<u64>>();
+
+    if new_timestamps.len() == existing_timestamps_length {
+        return Err(ContractError::InvalidTimestamp{});
+    }
+
+    state.cron_timestamps = new_timestamps;
+    STATE.save(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "delete_timestamp")
+        .add_attribute("timestamp_removed", timestamp.to_string()))
+}
+
+fn sender_is_manager(deps: &DepsMut, info: &MessageInfo) -> bool {
+    let config = CONFIG.load(deps.storage).unwrap();
+    info.sender == config.manager
 }
 
 fn delete_metrics_for_timestamp(
     deps: DepsMut,
+    info: MessageInfo,
     timestamp: u64,
     validator_start: usize,
     validator_ct: usize,
 ) -> Result<Response, ContractError> {
+
+    if !sender_is_manager(&deps, &info) {
+        return Err(ContractError::Unauthorized {});
+    }
     //for every validator, in range, remove the metrics
     let state = STATE.load(deps.storage)?;
     if state.validators.len().le(&validator_start) {
@@ -269,9 +314,7 @@ fn update_config(
         return Err(ContractError::BatchSizeCannotBeZero {});
     }
 
-    let manager = CONFIG.load(deps.storage)?.manager;
-    // can only be updated by manager
-    if info.sender != manager {
+    if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -404,10 +447,16 @@ fn remove_validator(
 //todo: write tests
 fn delete_metrics_for_validator(
     deps: DepsMut,
+    info: MessageInfo,
     val_address: Addr,
     timestamp_start: usize,
     timestamp_count: usize,
 ) -> Result<Response, ContractError> {
+
+    if !sender_is_manager(&deps, &info) {
+        return Err(ContractError::Unauthorized {});
+    }
+
     let state = STATE.load(deps.storage)?;
     if state.cron_timestamps.len().le(&timestamp_start) {
         //todo: consider adding error / Ok?
@@ -462,9 +511,9 @@ pub fn record_validator_metrics(
     info: MessageInfo,
     timestamp: u64,
 ) -> Result<Response, ContractError> {
-    let manager = CONFIG.load(deps.storage)?.manager;
+
     // can only be called by manager
-    if info.sender != manager {
+    if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -828,6 +877,15 @@ fn query_validators_metrics_by_timestamp(
     let mut start = from;
     let mut res: Vec<ValidatorMetrics> = vec![];
     while start.le(&to) {
+        // note: this change will help with missing validator / timestamps due to deletion.
+        // let fetch_metric_result = METRICS_HISTORY.load(
+        //     deps.storage,
+        //     (&validator_operator_addr[start as usize], U64Key::new(timestamp)));
+        // //note: this change is required, as deletion is now a possibility,
+        // // and this validators metrics might not exist for this timestamp
+        // if let Ok(metric) = fetch_metric_result {
+        //     res.push(metric);
+        // }
         res.push(METRICS_HISTORY.load(
             deps.storage,
             (
@@ -890,8 +948,8 @@ mod tests {
 
     #[test]
     fn test_record_metrics() {
-        let mut deps = mock_dependencies(&[]);
-        let info = mock_info("creator", &[]);
+        let mut deps = initiate_test_validators_and_metrics();
+        let info = get_test_msg_info();
         let env = mock_env();
         let timestamp = 10;
 
@@ -936,6 +994,7 @@ mod tests {
         // check if remove validator removes both validator and metrics
         let result = delete_metrics_for_validator(
             dependencies.as_mut(),
+            get_test_msg_info(),
             Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
             0,
             1,
@@ -973,7 +1032,8 @@ mod tests {
         assert!(metrics.is_ok());
 
         // delete one validator from this timestamp metrics
-        let result = delete_metrics_for_timestamp(dependencies.as_mut(), TEST_TIMESTAMP_1, 0, 1);
+        let result = delete_metrics_for_timestamp(
+            dependencies.as_mut(), get_test_msg_info(), TEST_TIMESTAMP_1, 0, 1);
 
         // check if result is okay
         assert!(result.as_ref().ok().is_some());
@@ -989,7 +1049,8 @@ mod tests {
         assert_eq!(validators_left, "1");
 
         // delete second validator from this timestamp metrics
-        let result = delete_metrics_for_timestamp(dependencies.as_mut(), TEST_TIMESTAMP_1, 1, 1);
+        let result = delete_metrics_for_timestamp(
+            dependencies.as_mut(), get_test_msg_info(), TEST_TIMESTAMP_1, 1, 1);
 
         // check if result is okay
         assert!(result.as_ref().ok().is_some());
@@ -1025,10 +1086,7 @@ mod tests {
         let mut dependencies = instantiate_test_contract();
 
         // initiate state to have two timestamp metrics for two validators
-        let _msg = MessageInfo {
-            sender: Addr::unchecked(TEST_OWNER_ADDR),
-            funds: vec![Coin::new(1000, TEST_DENOM)],
-        };
+        let _msg = get_test_msg_info();
 
         // initiate state
         let _ = STATE.update(dependencies.as_mut().storage, |mut s| -> StdResult<_> {
@@ -1047,6 +1105,13 @@ mod tests {
             &test_metrics(TEST_VALIDATOR_OPR_ADDR, TEST_TIMESTAMP_1),
         );
         dependencies
+    }
+
+    fn get_test_msg_info() -> MessageInfo {
+        MessageInfo {
+            sender: Addr::unchecked(TEST_OWNER_ADDR),
+            funds: vec![Coin::new(1000, TEST_DENOM)],
+        }
     }
 
     fn test_metrics(validator_addr: &str, timestamp: u64) -> ValidatorMetrics {

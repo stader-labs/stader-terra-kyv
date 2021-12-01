@@ -38,6 +38,9 @@ pub enum ExecuteMsg {
         timestamp_idx: u64,
         timestamp_ct: u64,
     },
+    RemoveTimestamp {
+        timestamp_idx: u64
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

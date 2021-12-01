@@ -38,4 +38,7 @@ pub enum ContractError {
 
     #[error("No metrics found for given timestamp, for validators in given range")]
     ValidatorOutOfRange {},
+
+    #[error("Timestamp not found")]
+    InvalidTimestamp {},
 }
