@@ -128,8 +128,8 @@ fn remove_timestamp(
     if new_timestamps.len() == existing_timestamps_length {
         return Ok(Response::new()
             .add_attribute("method", "delete_timestamp")
-            .add_attribute("timestamp_removed", timestamp.to_string()))
-            .add_attribute("message", "timestamp doesn't exist");
+            .add_attribute("timestamp_removed", timestamp.to_string())
+            .add_attribute("message", "timestamp doesn't exist"))
     }
 
     state.cron_timestamps = new_timestamps;
@@ -137,8 +137,8 @@ fn remove_timestamp(
 
     Ok(Response::new()
         .add_attribute("method", "delete_timestamp")
-        .add_attribute("timestamp_removed", timestamp.to_string()))
-        .add_attribute("message", "timestamp successfully removed")
+        .add_attribute("timestamp_removed", timestamp.to_string())
+        .add_attribute("message", "timestamp successfully removed"))
 }
 
 fn sender_is_manager(deps: &DepsMut, info: &MessageInfo) -> bool {
@@ -540,7 +540,7 @@ pub fn record_validator_metrics(
 }
 
 fn get_last_recorded_timestamp(deps: &DepsMut) -> u64 {
-    let state = STATE.load(deps.storage)?;
+    let state = STATE.load(deps.storage).unwrap();
     *state.cron_timestamps.last().unwrap_or(&(0 as u64))
 }
 
