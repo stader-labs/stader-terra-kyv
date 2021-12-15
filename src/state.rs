@@ -13,7 +13,7 @@ pub struct State {
     pub validators: Vec<ValidatorAccounts>,
     //hard to remove from this, costs O(T) time, if was a set, could be O(1) average time
     pub cron_timestamps: Vec<u64>,
-    pub validator_index_for_next_cron: u64,
+    pub validator_index_for_next_cron: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

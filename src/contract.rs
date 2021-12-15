@@ -1,5 +1,5 @@
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, ValidatorAprResponse};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, ValidatorAprResponse};
 use crate::state::ValidatorAccounts;
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::util::{
@@ -19,7 +19,7 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::ops::Sub;
-use terra_cosmwasm::TerraQuerier;
+use terra_cosmwasm::{TerraMsgWrapper, TerraQuerier};
 
 //todo[PD]: consider splitting into validator + test, metrics + test modules, for modularity.
 
@@ -125,20 +125,20 @@ fn remove_timestamp(
         .filter(|state_tstamp| {state_tstamp.ne(&timestamp)})
         .collect::<Vec<u64>>();
 
-    if new_timestamps.len() == existing_timestamps_length {
-        return Ok(Response::new()
-            .add_attribute("method", "delete_timestamp")
-            .add_attribute("timestamp_removed", timestamp.to_string())
-            .add_attribute("message", "timestamp doesn't exist"))
-    }
+    let mut timestamp_existed = false;
 
-    state.cron_timestamps = new_timestamps;
-    STATE.save(deps.storage, &state)?;
+    if new_timestamps.len() < existing_timestamps_length {
+        state.cron_timestamps = new_timestamps;
+        STATE.save(deps.storage, &state)?;
+        timestamp_existed = true;
+    }
 
     Ok(Response::new()
         .add_attribute("method", "delete_timestamp")
         .add_attribute("timestamp_removed", timestamp.to_string())
-        .add_attribute("message", "timestamp successfully removed"))
+        .add_attribute("message",
+                       if timestamp_existed {"timestamp successfully removed"}
+                       else {"timestamp didn't exist"}))
 }
 
 fn sender_is_manager(deps: &DepsMut, info: &MessageInfo) -> bool {
@@ -224,6 +224,23 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             deps, addr, timestamp1, timestamp2,
         )?),
     }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(
+    _deps: DepsMut,
+    _env: Env,
+    _msg: MigrateMsg,
+) -> Result<Response<TerraMsgWrapper>, ContractError> {
+
+    CONFIG.update(_deps.storage, |mut conf| -> StdResult<_> {
+        conf.manager = _msg.manager_address.clone();
+        Ok(conf)
+    })?;
+
+    Ok(Response::new()
+        .add_attribute("method", "update_config")
+        .add_attribute("new_manager", _msg.manager_address.to_string()))
 }
 
 fn query_timestamps(deps: Deps) -> StdResult<Vec<u64>> {
@@ -541,7 +558,7 @@ pub fn record_validator_metrics(
 
 fn get_last_recorded_timestamp(deps: &DepsMut) -> u64 {
     let state = STATE.load(deps.storage).unwrap();
-    *state.cron_timestamps.last().unwrap_or(&(0 as u64))
+    *state.cron_timestamps.last().unwrap_or(&(0_u64))
 }
 
 fn compute_current_metrics(

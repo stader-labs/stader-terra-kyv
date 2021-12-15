@@ -78,6 +78,11 @@ pub enum QueryMsg {
         addr: Addr,
     },
 }
+//Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct MigrateMsg {
+    pub manager_address: Addr
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
