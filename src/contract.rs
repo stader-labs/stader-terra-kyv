@@ -21,7 +21,7 @@ use std::convert::TryInto;
 use std::ops::Sub;
 use terra_cosmwasm::TerraQuerier;
 
-//todo: consider splitting into validator + test, metrics + test modules, for modularity.
+//todo[PD]: consider splitting into validator + test, metrics + test modules, for modularity.
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -101,13 +101,14 @@ pub fn execute(
             timestamp_ct as usize,
         ),
 
-        ExecuteMsg::RemoveTimestamp { timestamp_idx } => delete_timestamp(deps, info, timestamp_idx)
+        ExecuteMsg::RemoveTimestamp { timestamp_idx } => remove_timestamp(deps, info, timestamp_idx)
     }
 }
 
+//todo; write test for this
 //note: this is also inefficient, potentially O(T), due to array deletion. not sure if
 // cosmwasm library optimizes this.
-fn delete_timestamp(
+fn remove_timestamp(
     deps: DepsMut,
     info: MessageInfo,
     timestamp: u64) -> Result<Response, ContractError> {
@@ -125,7 +126,10 @@ fn delete_timestamp(
         .collect::<Vec<u64>>();
 
     if new_timestamps.len() == existing_timestamps_length {
-        return Err(ContractError::InvalidTimestamp{});
+        return Ok(Response::new()
+            .add_attribute("method", "delete_timestamp")
+            .add_attribute("timestamp_removed", timestamp.to_string()))
+            .add_attribute("message", "timestamp doesn't exist");
     }
 
     state.cron_timestamps = new_timestamps;
@@ -134,6 +138,7 @@ fn delete_timestamp(
     Ok(Response::new()
         .add_attribute("method", "delete_timestamp")
         .add_attribute("timestamp_removed", timestamp.to_string()))
+        .add_attribute("message", "timestamp successfully removed")
 }
 
 fn sender_is_manager(deps: &DepsMut, info: &MessageInfo) -> bool {
@@ -168,17 +173,6 @@ fn delete_metrics_for_timestamp(
                 (&validator.operator_address, U64Key::from(timestamp)),
             );
         });
-
-    //note : this can be problematic... as again this is O(T). Would be easier if stored as a set.
-    //todo: add this functionality later, requires DS optimization.
-    // if state.validators.len() == validator_end {
-    //     STATE.update(deps.storage, |mut s: State| -> StdResult<_> {
-    //         s.cron_timestamps = s.cron_timestamps.into_iter()
-    //             .filter(|state_timestamp| {!(state_timestamp.eq(&timestamp))})
-    //             .collect();
-    //         Ok(s)
-    //     })?;
-    // }
 
     Ok(Response::new()
         .add_attribute("method", "delete_metrics_for_timestamp")
@@ -443,8 +437,6 @@ fn remove_validator(
         .add_attribute("method", "remove_validator"))
 }
 
-//todo: add code for removing timestamps with no metrics associated
-//todo: write tests
 fn delete_metrics_for_validator(
     deps: DepsMut,
     info: MessageInfo,
@@ -459,7 +451,6 @@ fn delete_metrics_for_validator(
 
     let state = STATE.load(deps.storage)?;
     if state.cron_timestamps.len().le(&timestamp_start) {
-        //todo: consider adding error / Ok?
         return Err(ContractError::TimestampOutOfRange {});
     }
 
@@ -468,7 +459,6 @@ fn delete_metrics_for_validator(
         state.cron_timestamps.len(),
     );
 
-    //todo: validate if timestamp range is actually inclusive
     query_timestamps(deps.as_ref()).unwrap()[timestamp_start..timestamp_end]
         .iter()
         .for_each(|timestamp| {
@@ -517,6 +507,10 @@ pub fn record_validator_metrics(
         return Err(ContractError::Unauthorized {});
     }
 
+    if get_last_recorded_timestamp(&deps) > timestamp {
+        return Err(ContractError::TimestampWithinExistingRange {});
+    }
+
     let validators_to_record = get_validators_to_record(deps.storage, timestamp)?;
 
     if validators_to_record.is_empty() {
@@ -543,6 +537,11 @@ pub fn record_validator_metrics(
                 validators_to_record.len()
             ),
         ))
+}
+
+fn get_last_recorded_timestamp(deps: &DepsMut) -> u64 {
+    let state = STATE.load(deps.storage)?;
+    *state.cron_timestamps.last().unwrap_or(&(0 as u64))
 }
 
 fn compute_current_metrics(
@@ -972,7 +971,6 @@ mod tests {
         let _res = add_validator(deps.as_mut(), info, validator_opr, validator_acc);
     }
 
-    //todo: finish writing test
     #[test]
     fn test_delete_metrics_for_validator() {
         //initiate state
@@ -1073,13 +1071,19 @@ mod tests {
             ),
         );
 
-        // todo: enable this / refactor into another test when removing a redundant timestamp is done
-        // check if state has the timestamp removed
-        // let state = STATE.load(&dependencies.storage).unwrap();
-        // assert_eq!(1, state.cron_timestamps.len());
-
         // check if metrics response is giving error, due to this metric not being available
         assert!(metrics.is_err());
+    }
+
+    #[test]
+    fn test_delete_timestamp() {
+        let mut dependencies = initiate_test_validators_and_metrics();
+        delete_metrics_for_timestamp(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            TEST_TIMESTAMP_1, 0, 2);
+
+        let result = remove_timestamp(dependencies.as_mut(), get_test_msg_info(), TEST_TIMESTAMP_1);
     }
 
     fn initiate_test_validators_and_metrics() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
@@ -1102,7 +1106,7 @@ mod tests {
                 &Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
                 U64Key::from(TEST_TIMESTAMP_1),
             ),
-            &test_metrics(TEST_VALIDATOR_OPR_ADDR, TEST_TIMESTAMP_1),
+            &get_test_metrics(TEST_VALIDATOR_OPR_ADDR, TEST_TIMESTAMP_1),
         );
         dependencies
     }
@@ -1114,7 +1118,7 @@ mod tests {
         }
     }
 
-    fn test_metrics(validator_addr: &str, timestamp: u64) -> ValidatorMetrics {
+    fn get_test_metrics(validator_addr: &str, timestamp: u64) -> ValidatorMetrics {
         ValidatorMetrics {
             operator_addr: Addr::unchecked(validator_addr),
             rewards: Default::default(),
@@ -1140,4 +1144,5 @@ mod tests {
             },
         ]
     }
+
 }

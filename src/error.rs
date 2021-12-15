@@ -41,4 +41,7 @@ pub enum ContractError {
 
     #[error("Timestamp not found")]
     InvalidTimestamp {},
+
+    #[error("Timestamp is within existing timestamps range")]
+    TimestampWithinExistingRange{}
 }
