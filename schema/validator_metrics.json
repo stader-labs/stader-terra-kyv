@@ -3,18 +3,17 @@
   "title": "ValidatorMetrics",
   "type": "object",
   "required": [
-    "addr",
     "commission",
     "delegated_amount",
     "max_commission",
+    "operator_addr",
     "rewards",
     "rewards_in_coins",
+    "self_delegated_amount",
+    "slashing_pointer",
     "timestamp"
   ],
   "properties": {
-    "addr": {
-      "$ref": "#/definitions/Addr"
-    },
     "commission": {
       "$ref": "#/definitions/Decimal"
     },
@@ -24,6 +23,9 @@
     "max_commission": {
       "$ref": "#/definitions/Decimal"
     },
+    "operator_addr": {
+      "$ref": "#/definitions/Addr"
+    },
     "rewards": {
       "$ref": "#/definitions/Decimal"
     },
@@ -32,6 +34,12 @@
       "items": {
         "$ref": "#/definitions/Coin"
       }
+    },
+    "self_delegated_amount": {
+      "$ref": "#/definitions/Uint128"
+    },
+    "slashing_pointer": {
+      "$ref": "#/definitions/Decimal"
     },
     "timestamp": {
       "type": "integer",

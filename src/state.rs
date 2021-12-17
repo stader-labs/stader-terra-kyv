@@ -7,9 +7,13 @@ use cw_storage_plus::{Item, Map, U64Key};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
     pub vault_denom: String,
+    // note: querying validator by address is costly, as it requires iteration, can
+    // be optimized with a cleaner way to query, but might not be important, as number of validators
+    // is not expected to grow beyond 20-30.
     pub validators: Vec<ValidatorAccounts>,
+    //hard to remove from this, costs O(T) time, if was a set, could be O(1) average time
     pub cron_timestamps: Vec<u64>,
-    pub validator_index_for_next_cron: u64,
+    pub validator_index_for_next_cron: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

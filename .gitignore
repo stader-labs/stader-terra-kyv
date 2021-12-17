@@ -16,3 +16,6 @@
 # IDEs
 *.iml
 .idea
+
+# Ignore scripts
+/scripts

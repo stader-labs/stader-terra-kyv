@@ -28,6 +28,19 @@ pub enum ExecuteMsg {
     WithdrawFunds {
         amount: Uint128,
     },
+    DeleteMetricsForTimestamp {
+        timestamp: u64,
+        validator_idx: u64,
+        validator_ct: u64,
+    }, // used to delete all metrics associated with the timestamp, along with the timestamp record
+    DeleteMetricsForValidator {
+        validator_opr_addr: Addr,
+        timestamp_idx: u64,
+        timestamp_ct: u64,
+    },
+    RemoveTimestamp {
+        timestamp: u64
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -64,6 +77,11 @@ pub enum QueryMsg {
         timestamp2: u64,
         addr: Addr,
     },
+}
+//Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct MigrateMsg {
+    pub manager_address: Addr
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
