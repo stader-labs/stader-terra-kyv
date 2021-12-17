@@ -39,7 +39,7 @@ pub enum ExecuteMsg {
         timestamp_ct: u64,
     },
     RemoveTimestamp {
-        timestamp_idx: u64
+        timestamp: u64
     }
 }
 

@@ -101,7 +101,7 @@ pub fn execute(
             timestamp_ct as usize,
         ),
 
-        ExecuteMsg::RemoveTimestamp { timestamp_idx } => remove_timestamp(deps, info, timestamp_idx)
+        ExecuteMsg::RemoveTimestamp { timestamp } => remove_timestamp(deps, info, timestamp)
     }
 }
 
