@@ -43,5 +43,8 @@ pub enum ContractError {
     InvalidTimestamp {},
 
     #[error("Timestamp is within existing timestamps range")]
-    TimestampWithinExistingRange{}
+    TimestampWithinExistingRange{},
+
+    #[error("Timestamp already recorded")]
+    TimestampAlreadyRecorded
 }

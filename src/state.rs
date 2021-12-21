@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
 use cw_storage_plus::{Item, Map, U64Key};
+use crate::msg::{OffChainMetrics, OffChainTimestamps};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
@@ -42,6 +43,7 @@ pub struct ValidatorMetrics {
     pub rewards_in_coins: Vec<Coin>,
 }
 
+
 // (Validator Addr, Timestamp)
 pub const METRICS_HISTORY: Map<(&Addr, U64Key), ValidatorMetrics> =
     Map::new("validator_metrics_history");
@@ -49,5 +51,9 @@ pub const METRICS_HISTORY: Map<(&Addr, U64Key), ValidatorMetrics> =
 pub const STATE: Item<State> = Item::new("state");
 
 pub const CONFIG: Item<Config> = Item::new("config");
+
+pub const OFF_CHAIN_STATE: Map<U64Key, OffChainMetrics> = Map::new("off_chain_metrics");
+
+pub const OFF_CHAIN_TIMESTAMPS: Item<OffChainTimestamps> = Item::new("off_chain_timestamps");
 
 // pub exchange_rates: Vec<(String, Decimal)>, // FOR TESTING - REMOVE THIS

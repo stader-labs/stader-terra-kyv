@@ -9,6 +9,30 @@ pub struct InstantiateMsg {
     pub batch_size: u64,
 }
 
+/*
+  - timestamp at which apr comp
+  - validator address for which recorded
+  - the avg luna price that we have used
+    - since the last run
+  - actual apr that we have computed
+ */
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainMetrics {
+    pub timestamp: u64,
+    pub validator_metrics: Vec<OffChainValidatorMetrics>,
+    pub conversion_ratios_to_luna: Vec<(String, Decimal)>
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainValidatorMetrics {
+    pub opr_address: Addr,
+    pub apr: Decimal
+}
+
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
@@ -39,6 +63,12 @@ pub enum ExecuteMsg {
         timestamp_ct: u64,
     },
     RemoveTimestamp {
+        timestamp: u64
+    },
+    AddOffChainMetrics {
+        off_chain_metrics: OffChainMetrics
+    },
+    RemoveOffChainMetricsForTimestamp {
         timestamp: u64
     }
 }
@@ -77,6 +107,10 @@ pub enum QueryMsg {
         timestamp2: u64,
         addr: Addr,
     },
+    GetOffChainMetrics {
+        timestamp: u64
+    },
+    GetOffChainMetricsTimestamps {}
 }
 //Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -89,4 +123,10 @@ pub struct MigrateMsg {
 pub struct ValidatorAprResponse {
     pub addr: Addr,
     pub apr: Decimal,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainTimestamps {
+    pub timestamps: Vec<u64>
 }
