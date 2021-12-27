@@ -124,7 +124,10 @@ pub enum QueryMsg {
         validator_addr: Addr
     },
     GetOffChainState {},
-    GetOffChainMetricsTimestamps {}
+    GetOffChainMetricsTimestamps {},
+    GetOffChainTimestampDetails {
+        timestamp: u64
+    }
 }
 //Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
