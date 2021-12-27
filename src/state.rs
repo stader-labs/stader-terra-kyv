@@ -2,8 +2,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
-use cw_storage_plus::{Item, Map, U64Key};
-use crate::msg::{OffChainMetrics, OffChainTimestamps};
+use cw_storage_plus::{Item, Map, U16Key, U64Key};
+use crate::constants;
+use crate::msg::{OffchainTimestampDetails, OffChainTimestamps, OffChainValidatorMetrics};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
@@ -15,6 +16,12 @@ pub struct State {
     //hard to remove from this, costs O(T) time, if was a set, could be O(1) average time
     pub cron_timestamps: Vec<u64>,
     pub validator_index_for_next_cron: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct OffChainState {
+    pub new_validator_idx: u16
+
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -52,8 +59,33 @@ pub const STATE: Item<State> = Item::new("state");
 
 pub const CONFIG: Item<Config> = Item::new("config");
 
-pub const OFF_CHAIN_STATE: Map<U64Key, OffChainMetrics> = Map::new("off_chain_metrics");
+
+// off chain details
+
+pub const OFF_CHAIN_STATE: Item<OffChainState> = Item::new(constants::OFF_CHAIN_STATE);
+
+pub const OFF_CHAIN_VALIDATOR_IDX_MAPPING: Map<&Addr, u16> =
+    Map::new(constants::OFF_CHAIN_VALIDATOR_IDX_MAPPING);
+
+pub const OFF_CHAIN_TIMESTAMP_DETAILS: Map<U64Key, OffchainTimestampDetails> =
+    Map::new(constants::OFFCHAIN_TIMESTAMP_DETAILS);
+
+pub const OFF_CHAIN_STATE_FOR_VALIDATOR: Map<(U64Key, Addr), OffChainValidatorMetrics> =
+    Map::new(constants::OFF_CHAIN_METRICS_FOR_VALIDATOR);
 
 pub const OFF_CHAIN_TIMESTAMPS: Item<OffChainTimestamps> = Item::new("off_chain_timestamps");
+/*
+ create a map of validators address to an index mapping [o]
+ (apr)
+ key storage might be redundant for a timestamp
+ > Mapping to an index, incrementing id for a validator
+ > Map<Addr, Index> address_mapping;
+ > next_validator_ct = 0...         U16
+ > Off_Chain_state : Take care in initiate and migrate
+
+ > Push metrics : (Data will be in validator_addr, we can resolve in contract)
+                : Ensures loose coupling instead of tight
+ */
+
 
 // pub exchange_rates: Vec<(String, Decimal)>, // FOR TESTING - REMOVE THIS

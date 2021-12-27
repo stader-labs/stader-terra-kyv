@@ -19,17 +19,20 @@ pub struct InstantiateMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct OffChainMetrics {
+pub struct OffchainTimestampDetails {
     pub timestamp: u64,
-    pub validator_metrics: Vec<OffChainValidatorMetrics>,
     pub conversion_ratios_to_luna: Vec<(String, Decimal)>
 }
+
+// luna to usd
+// other currencies to luna
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct OffChainValidatorMetrics {
     pub opr_address: Addr,
     pub apr: Decimal
+    // diff in currencies -> swap to luna -> (delta in luna (inc all curr) percentage)
 }
 
 
@@ -65,12 +68,21 @@ pub enum ExecuteMsg {
     RemoveTimestamp {
         timestamp: u64
     },
-    AddOffChainMetrics {
-        off_chain_metrics: OffChainMetrics
-    },
     RemoveOffChainMetricsForTimestamp {
         timestamp: u64
+    },
+    OffChainAddValidator {
+        oper_addr: Addr
+    },
+    OffChainRecordTimestampDetails {
+        timestamp: u64,
+        timestamp_details: OffchainTimestampDetails
+    },
+    OffChainAddValidatorMetricsForTimestamp {
+        timestamp: u64,
+        validator_metrics: Vec<OffChainValidatorMetrics>
     }
+
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -107,9 +119,11 @@ pub enum QueryMsg {
         timestamp2: u64,
         addr: Addr,
     },
-    GetOffChainMetrics {
-        timestamp: u64
+    GetOffChainValidatorMetrics {
+        timestamp: u64,
+        validator_addr: Addr
     },
+    GetOffChainState {},
     GetOffChainMetricsTimestamps {}
 }
 //Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
