@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffchainTimestampDetails, QueryMsg, ValidatorAprResponse, OffChainValidatorMetrics};
 use crate::state::{OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR, OFF_CHAIN_TIMESTAMP_DETAILS, OFF_CHAIN_TIMESTAMPS, OFF_CHAIN_VALIDATOR_IDX_MAPPING, OffChainState, ValidatorAccounts};
@@ -14,7 +13,7 @@ use cosmwasm_std::{
     StdError, StdResult, Storage, Uint128,
 };
 use cosmwasm_std::{BankMsg, Decimal};
-use cw_storage_plus::{Bound, U16Key, U64Key};
+use cw_storage_plus::{Bound, U64Key};
 use std::cmp;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -37,18 +36,25 @@ pub fn instantiate(
         cron_timestamps: vec![],
         validator_index_for_next_cron: 0,
     };
-    STATE.save(deps.storage, &state)?;
-
     let config = Config {
         manager: info.sender.clone(),
         amount_to_stake_per_validator: msg.amount_to_stake_per_validator,
         batch_size: msg.batch_size,
     };
+
+    STATE.save(deps.storage, &state)?;
     CONFIG.save(deps.storage, &config)?;
 
+
+    // offchain publishing related states
+    let off_chain_state = OffChainState {
+        new_validator_idx: 0
+    };
     let off_chain_timestamps = OffChainTimestamps {
         timestamps: vec![]
     };
+
+    OFF_CHAIN_STATE.save(deps.storage, &off_chain_state)?;
     OFF_CHAIN_TIMESTAMPS.save(deps.storage, &off_chain_timestamps)?;
 
     Ok(Response::new()
@@ -74,9 +80,15 @@ pub fn migrate(
         Ok(conf)
     })?;
 
+    // offchain publishing related states
+    let off_chain_state = OffChainState {
+        new_validator_idx: 0
+    };
     let off_chain_timestamps = OffChainTimestamps {
         timestamps: vec![]
     };
+
+    OFF_CHAIN_STATE.save(_deps.storage, &off_chain_state)?;
     OFF_CHAIN_TIMESTAMPS.save(_deps.storage, &off_chain_timestamps)?;
 
     Ok(Response::new()
@@ -219,7 +231,7 @@ fn save_off_chain_details(
         return Err(ContractError::OffChainDetailsAlreadyRecorded);
     }
 
-    OFF_CHAIN_TIMESTAMP_DETAILS.save(deps.storage, U64Key::from(timestamp), &details);
+    OFF_CHAIN_TIMESTAMP_DETAILS.save(deps.storage, U64Key::from(timestamp), &details)?;
 
     return Ok(Response::new()
         .add_attribute("method", "save_off_chain_details")
