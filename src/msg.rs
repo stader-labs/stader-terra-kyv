@@ -1,4 +1,5 @@
 use cosmwasm_std::{Addr, Decimal, Uint128};
+use cw_storage_plus::U64Key;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -10,18 +11,18 @@ pub struct InstantiateMsg {
 }
 
 /*
-  - timestamp at which apr comp
-  - validator address for which recorded
-  - the avg luna price that we have used
-    - since the last run
-  - actual apr that we have computed
- */
+ - timestamp at which apr comp
+ - validator address for which recorded
+ - the avg luna price that we have used
+   - since the last run
+ - actual apr that we have computed
+*/
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct OffchainTimestampDetails {
     pub timestamp: u64,
-    pub conversion_ratios_to_luna: Vec<(String, Decimal)>
+    pub conversion_ratios_to_luna: Vec<(String, Decimal)>,
 }
 
 // luna to usd
@@ -30,11 +31,10 @@ pub struct OffchainTimestampDetails {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct OffChainValidatorMetrics {
+    pub validator_idx: u16,
     pub opr_address: Addr,
-    pub apr: Decimal
-    // diff in currencies -> swap to luna -> (delta in luna (inc all curr) percentage)
+    pub apr: Decimal, // diff in currencies -> swap to luna -> (delta in luna (inc all curr) percentage)
 }
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -66,23 +66,22 @@ pub enum ExecuteMsg {
         timestamp_ct: u64,
     },
     RemoveTimestamp {
-        timestamp: u64
+        timestamp: u64,
     },
     RemoveOffChainMetricsForTimestamp {
-        timestamp: u64
+        timestamp: u64,
     },
     OffChainAddValidator {
-        oper_addr: Addr
+        oper_addr: Addr,
     },
     OffChainRecordTimestampDetails {
         timestamp: u64,
-        timestamp_details: OffchainTimestampDetails
+        timestamp_details: OffchainTimestampDetails,
     },
     OffChainAddValidatorMetricsForTimestamp {
         timestamp: u64,
-        validator_metrics: Vec<OffChainValidatorMetrics>
-    }
-
+        validator_metrics: Vec<OffChainValidatorMetrics>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -121,18 +120,18 @@ pub enum QueryMsg {
     },
     GetOffChainValidatorMetrics {
         timestamp: u64,
-        validator_addr: Addr
+        validator_addr: Addr,
     },
     GetOffChainState {},
     GetOffChainMetricsTimestamps {},
     GetOffChainTimestampDetails {
-        timestamp: u64
-    }
+        timestamp: u64,
+    },
 }
 //Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct MigrateMsg {
-    pub manager_address: Addr
+    pub manager_address: Addr,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -145,5 +144,5 @@ pub struct ValidatorAprResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct OffChainTimestamps {
-    pub timestamps: Vec<u64>
+    pub timestamps: Vec<u64>,
 }

@@ -1,7 +1,15 @@
+use crate::conversion_utils;
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffchainTimestampDetails, QueryMsg, ValidatorAprResponse, OffChainValidatorMetrics};
-use crate::state::{OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR, OFF_CHAIN_TIMESTAMP_DETAILS, OFF_CHAIN_TIMESTAMPS, OFF_CHAIN_VALIDATOR_IDX_MAPPING, OffChainState, ValidatorAccounts};
+use crate::msg::QueryMsg::GetOffChainMetricsTimestamps;
+use crate::msg::{
+    ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidatorMetrics,
+    OffchainTimestampDetails, QueryMsg, ValidatorAprResponse,
+};
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
+use crate::state::{
+    OffChainState, ValidatorAccounts, OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR,
+    OFF_CHAIN_TIMESTAMPS, OFF_CHAIN_TIMESTAMP_DETAILS, OFF_CHAIN_VALIDATOR_IDX_MAPPING,
+};
 use crate::util::{
     compute_apr, decimal_division_in_256, decimal_multiplication_in_256, decimal_summation_in_256,
     uint128_to_decimal,
@@ -13,7 +21,8 @@ use cosmwasm_std::{
     StdError, StdResult, Storage, Uint128,
 };
 use cosmwasm_std::{BankMsg, Decimal};
-use cw_storage_plus::{Bound, U64Key};
+use cw_storage_plus::{Bound, PrimaryKey, U16Key, U64Key};
+use serde::de::DeserializeSeed;
 use std::cmp;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -45,17 +54,12 @@ pub fn instantiate(
     STATE.save(deps.storage, &state)?;
     CONFIG.save(deps.storage, &config)?;
 
-
     // offchain publishing related states
     let off_chain_state = OffChainState {
-        new_validator_idx: 0
-    };
-    let off_chain_timestamps = OffChainTimestamps {
-        timestamps: vec![]
+        new_validator_idx: 0,
     };
 
     OFF_CHAIN_STATE.save(deps.storage, &off_chain_state)?;
-    OFF_CHAIN_TIMESTAMPS.save(deps.storage, &off_chain_timestamps)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -74,7 +78,6 @@ pub fn migrate(
     _env: Env,
     _msg: MigrateMsg,
 ) -> Result<Response<TerraMsgWrapper>, ContractError> {
-
     CONFIG.update(_deps.storage, |mut conf| -> StdResult<_> {
         conf.manager = _msg.manager_address.clone();
         Ok(conf)
@@ -82,19 +85,14 @@ pub fn migrate(
 
     // offchain publishing related states
     let off_chain_state = OffChainState {
-        new_validator_idx: 0
-    };
-    let off_chain_timestamps = OffChainTimestamps {
-        timestamps: vec![]
+        new_validator_idx: 0,
     };
 
     OFF_CHAIN_STATE.save(_deps.storage, &off_chain_state)?;
-    OFF_CHAIN_TIMESTAMPS.save(_deps.storage, &off_chain_timestamps)?;
 
     Ok(Response::new()
         .add_attribute("method", "update_config")
         .add_attribute("new_manager", _msg.manager_address.to_string()))
-
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -130,33 +128,40 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             deps, timestamp, from, to,
         )?),
         QueryMsg::GetValidatorMetricsBtwTimestamps {
-            addr, timestamp1, timestamp2,
+            addr,
+            timestamp1,
+            timestamp2,
         } => to_binary(&query_all_validator_metrics_btw_timestamps(
             deps, addr, timestamp1, timestamp2,
         )?),
 
-        QueryMsg::GetOffChainValidatorMetrics {timestamp, validator_addr } =>
-            to_binary(&get_off_chain_metrics(deps, timestamp, validator_addr)?),
+        QueryMsg::GetOffChainValidatorMetrics {
+            timestamp,
+            validator_addr,
+        } => to_binary(&get_off_chain_metrics(deps, timestamp, validator_addr)?),
 
-        QueryMsg::GetOffChainMetricsTimestamps {} =>
-            to_binary(&get_off_chain_metrics_timestamps(deps)?),
-        QueryMsg::GetOffChainState {} => {
-            to_binary(&get_off_chain_state(deps)?)
+        QueryMsg::GetOffChainMetricsTimestamps {} => {
+            to_binary(&get_off_chain_metrics_timestamps(deps)?)
         }
+        QueryMsg::GetOffChainState {} => to_binary(&get_off_chain_state(deps)?),
         QueryMsg::GetOffChainTimestampDetails { timestamp } => {
             to_binary(&get_off_chain_timestamp_details(deps, timestamp)?)
         }
     }
 }
 
-fn get_off_chain_timestamp_details(deps: Deps, timestamp: u64) -> StdResult<OffchainTimestampDetails> {
-    let timestamp_details = OFF_CHAIN_TIMESTAMP_DETAILS.load(deps.storage, U64Key::from(timestamp))?;
+fn get_off_chain_timestamp_details(
+    deps: Deps,
+    timestamp: u64,
+) -> StdResult<OffchainTimestampDetails> {
+    let timestamp_details =
+        OFF_CHAIN_TIMESTAMP_DETAILS.load(deps.storage, U64Key::from(timestamp))?;
     Ok(timestamp_details)
 }
 
 fn get_off_chain_state(deps: Deps) -> StdResult<OffChainState> {
-    let off_chain_timestamps = OFF_CHAIN_STATE.load(deps.storage)?;
-    Ok(off_chain_timestamps)
+    let off_chain_state = OFF_CHAIN_STATE.load(deps.storage)?;
+    Ok(off_chain_state)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -205,29 +210,34 @@ pub fn execute(
         ),
 
         ExecuteMsg::RemoveTimestamp { timestamp } => remove_timestamp(deps, info, timestamp),
-        ExecuteMsg::RemoveOffChainMetricsForTimestamp {timestamp} =>
-            {remove_off_chain_metrics_for_timestamp(deps, info, timestamp)}
+        ExecuteMsg::RemoveOffChainMetricsForTimestamp { timestamp } => {
+            remove_off_chain_metrics_for_timestamp(deps, info, timestamp)
+        }
         //todo: test
-        ExecuteMsg::OffChainAddValidator {oper_addr} => {
+        ExecuteMsg::OffChainAddValidator { oper_addr } => {
             add_off_chain_validator(deps, info, oper_addr)
         }
 
         //todo: test
-        ExecuteMsg::OffChainRecordTimestampDetails { timestamp, timestamp_details } => {
-            save_off_chain_details(deps, info, timestamp, timestamp_details)
-        }
+        ExecuteMsg::OffChainRecordTimestampDetails {
+            timestamp,
+            timestamp_details,
+        } => save_off_chain_details(deps, info, timestamp, timestamp_details),
 
         //todo: test
-        ExecuteMsg::OffChainAddValidatorMetricsForTimestamp { timestamp, validator_metrics} => {
-            add_off_chain_validator_metrics(deps, info, timestamp, validator_metrics)
-        }
+        ExecuteMsg::OffChainAddValidatorMetricsForTimestamp {
+            timestamp,
+            validator_metrics,
+        } => add_off_chain_validator_metrics(deps, info, timestamp, validator_metrics),
     }
 }
 
 fn save_off_chain_details(
-    deps: DepsMut, info: MessageInfo, timestamp: u64, details: OffchainTimestampDetails)
-    -> Result<Response, ContractError> {
-
+    deps: DepsMut,
+    info: MessageInfo,
+    timestamp: u64,
+    details: OffchainTimestampDetails,
+) -> Result<Response, ContractError> {
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
@@ -242,10 +252,11 @@ fn save_off_chain_details(
     }
 
     OFF_CHAIN_TIMESTAMP_DETAILS.save(deps.storage, U64Key::from(timestamp), &details)?;
+    OFF_CHAIN_TIMESTAMPS.save(deps.storage, U64Key::from(timestamp), &true);
 
     return Ok(Response::new()
         .add_attribute("method", "save_off_chain_details")
-        .add_attribute("status", "Ok"))
+        .add_attribute("status", "Ok"));
 }
 
 //todo; write test for this
@@ -255,8 +266,8 @@ fn save_off_chain_details(
 fn remove_timestamp(
     deps: DepsMut,
     info: MessageInfo,
-    timestamp: u64) -> Result<Response, ContractError> {
-
+    timestamp: u64,
+) -> Result<Response, ContractError> {
     // can only be called by manager
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
@@ -265,8 +276,10 @@ fn remove_timestamp(
     let mut state = STATE.load(deps.storage)?;
     let existing_timestamps_length = state.cron_timestamps.len();
 
-    let new_timestamps = state.cron_timestamps.into_iter()
-        .filter(|state_tstamp| {state_tstamp.ne(&timestamp)})
+    let new_timestamps = state
+        .cron_timestamps
+        .into_iter()
+        .filter(|state_tstamp| state_tstamp.ne(&timestamp))
         .collect::<Vec<u64>>();
 
     let mut timestamp_existed = false;
@@ -280,9 +293,14 @@ fn remove_timestamp(
     Ok(Response::new()
         .add_attribute("method", "delete_timestamp")
         .add_attribute("timestamp_removed", timestamp.to_string())
-        .add_attribute("message",
-                       if timestamp_existed {"timestamp successfully removed"}
-                       else {"timestamp didn't exist"}))
+        .add_attribute(
+            "message",
+            if timestamp_existed {
+                "timestamp successfully removed"
+            } else {
+                "timestamp didn't exist"
+            },
+        ))
 }
 
 fn sender_is_manager(deps: &DepsMut, info: &MessageInfo) -> bool {
@@ -297,7 +315,6 @@ fn delete_metrics_for_timestamp(
     validator_start: usize,
     validator_ct: usize,
 ) -> Result<Response, ContractError> {
-
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
@@ -546,7 +563,6 @@ fn delete_metrics_for_validator(
     timestamp_start: usize,
     timestamp_count: usize,
 ) -> Result<Response, ContractError> {
-
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
@@ -603,7 +619,6 @@ pub fn record_validator_metrics(
     info: MessageInfo,
     timestamp: u64,
 ) -> Result<Response, ContractError> {
-
     // can only be called by manager
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
@@ -999,59 +1014,77 @@ fn query_validators_metrics_by_timestamp(
     Ok(res)
 }
 
-
 // off chain code
 
-//todo: test
-fn remove_off_chain_metrics_for_timestamp(deps: DepsMut, info: MessageInfo, timestamp: u64)
-                                          -> Result<Response, ContractError> {
+//todo: test, validate
+fn remove_off_chain_metrics_for_timestamp(
+    deps: DepsMut,
+    info: MessageInfo,
+    timestamp: u64,
+) -> Result<Response, ContractError> {
+    let mut timestamp_existed = true;
 
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
 
-    let mut off_chain_timestamps = OFF_CHAIN_TIMESTAMPS.load(deps.storage)?;
-
-    let existing_timestamps_length = off_chain_timestamps.timestamps.len();
-
-    let new_timestamps = off_chain_timestamps.timestamps.into_iter()
-        .filter(|state_timestamp| { state_timestamp.ne(&timestamp)})
-        .collect::<Vec<u64>>();
-
-    let mut timestamp_existed = false;
-
-    if new_timestamps.len() < existing_timestamps_length {
-        off_chain_timestamps.timestamps = new_timestamps;
-        OFF_CHAIN_TIMESTAMPS.save(deps.storage, &off_chain_timestamps)?;
-        OFF_CHAIN_TIMESTAMP_DETAILS.remove(deps.storage, U64Key::from(timestamp));
-        timestamp_existed = true;
+    if !OFF_CHAIN_TIMESTAMPS.has(deps.storage, U64Key::from(timestamp)) {
+        timestamp_existed = false;
     }
+
+    OFF_CHAIN_TIMESTAMPS.remove(deps.storage, U64Key::from(timestamp));
+    OFF_CHAIN_TIMESTAMP_DETAILS.remove(deps.storage, U64Key::from(timestamp));
+
+    let validator_idxs_to_remove: Vec<u16> = OFF_CHAIN_STATE_FOR_VALIDATOR
+        .prefix(U64Key::from(timestamp))
+        .range(deps.storage, Option::None, Option::None, Order::Ascending)
+        .map(|item| return item.unwrap().1.validator_idx)
+        .collect();
+
+    validator_idxs_to_remove.into_iter().for_each(|idx| {
+        OFF_CHAIN_STATE_FOR_VALIDATOR
+            .remove(deps.storage, (U64Key::from(timestamp), U16Key::from(idx)))
+    });
 
     Ok(Response::new()
         .add_attribute("method", "remove_off_chain_metrics_for_timestamp")
-        .add_attribute("message",
-                       if timestamp_existed {"timestamp successfully removed"}
-                       else {"timestamp didn't exist"}))
+        .add_attribute(
+            "message",
+            if timestamp_existed {
+                "timestamp successfully removed"
+            } else {
+                "timestamp didn't exist"
+            },
+        ))
 }
 
-fn add_off_chain_validator_metrics(deps: DepsMut,
-                                   info: MessageInfo,
-                                   timestamp: u64,
-                                   metrics_to_be_added: Vec<OffChainValidatorMetrics>)
-    -> Result<Response, ContractError> {
-
+fn add_off_chain_validator_metrics(
+    deps: DepsMut,
+    info: MessageInfo,
+    timestamp: u64,
+    metrics_to_be_added: Vec<OffChainValidatorMetrics>,
+) -> Result<Response, ContractError> {
     if !sender_is_manager(&deps, &info) {
+        println!("Hello 1 !");
         return Err(ContractError::Unauthorized {});
     }
 
+    println!("Metrics to be added: {:?}", metrics_to_be_added);
+
     for validator_metric in metrics_to_be_added {
-        if off_chain_metrics_exists(&deps, timestamp, &validator_metric.opr_address) {
-            return Err(ContractError::OffChainMetricsAlreadyRecorded)
+        let validator_idx = OFF_CHAIN_VALIDATOR_IDX_MAPPING
+            .load(deps.storage, &validator_metric.opr_address)
+            .unwrap();
+
+        if off_chain_metrics_exists(&deps, timestamp, validator_idx) {
+            return Err(ContractError::OffChainMetricsAlreadyRecorded);
         }
+
         OFF_CHAIN_STATE_FOR_VALIDATOR.save(
             deps.storage,
-            (U64Key::from(timestamp), validator_metric.opr_address.clone()),
-            &validator_metric);
+            (U64Key::from(timestamp), U16Key::from(validator_idx)),
+            &validator_metric,
+        );
     }
 
     Ok(Response::new()
@@ -1059,34 +1092,63 @@ fn add_off_chain_validator_metrics(deps: DepsMut,
         .add_attribute("status", "successful"))
 }
 
-fn off_chain_metrics_exists(deps: &DepsMut, timestamp: u64, validator_addr: &Addr) -> bool {
-    OFF_CHAIN_STATE_FOR_VALIDATOR.may_load(deps.storage, (
-        U64Key::from(timestamp), validator_addr.clone())).unwrap().is_some()
+fn off_chain_metrics_exists(deps: &DepsMut, timestamp: u64, validator_idx: u16) -> bool {
+    OFF_CHAIN_STATE_FOR_VALIDATOR
+        .may_load(
+            deps.storage,
+            (U64Key::from(timestamp), U16Key::from(validator_idx)),
+        )
+        .unwrap()
+        .is_some()
 }
 
 //todo: Implement
 fn get_off_chain_metrics_timestamps(deps: Deps) -> StdResult<OffChainTimestamps> {
-    let off_chain_timestamps = OFF_CHAIN_TIMESTAMPS.load(deps.storage)?;
-    Ok(off_chain_timestamps)
+    let keys: Vec<Vec<u8>> = OFF_CHAIN_TIMESTAMPS
+        .keys(deps.storage, Option::None, Option::None, Order::Ascending)
+        .collect();
+
+    let off_chain_timestamps: Vec<u64> = OFF_CHAIN_TIMESTAMPS
+        .keys(deps.storage, Option::None, Option::None, Order::Ascending)
+        .map(|item| conversion_utils::u64_from_vec_u8(item))
+        .collect();
+
+    Ok(OffChainTimestamps {
+        timestamps: off_chain_timestamps,
+    })
 }
 
 //todo: implement
-fn get_off_chain_metrics(deps: Deps, timestamp: u64, validator_addr: Addr) -> StdResult<OffChainValidatorMetrics> {
+fn get_off_chain_metrics(
+    deps: Deps,
+    timestamp: u64,
+    validator_addr: Addr,
+) -> StdResult<OffChainValidatorMetrics> {
+    let validator_idx = OFF_CHAIN_VALIDATOR_IDX_MAPPING.load(deps.storage, &validator_addr)?;
+    let keys: Vec<Vec<u8>> = OFF_CHAIN_STATE_FOR_VALIDATOR
+        .keys(deps.storage, Option::None, Option::None, Order::Ascending)
+        .collect();
+    println!("OFF_CHAIN_STATE_FOR_VALIDATOR : {:?}", keys);
+
     let off_chain_state = OFF_CHAIN_STATE_FOR_VALIDATOR.load(
-        deps.storage, (U64Key::from(timestamp), validator_addr))?;
+        deps.storage,
+        (U64Key::from(timestamp), U16Key::from(validator_idx)),
+    )?;
     Ok(off_chain_state)
 }
 
-fn add_off_chain_validator(deps: DepsMut, info: MessageInfo, validator_addr: Addr)
-                           -> Result<Response, ContractError> {
-
+fn add_off_chain_validator(
+    deps: DepsMut,
+    info: MessageInfo,
+    validator_addr: Addr,
+) -> Result<Response, ContractError> {
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
 
     let off_chain_state = OFF_CHAIN_STATE.load(deps.storage)?;
     let optional_validator =
-        OFF_CHAIN_VALIDATOR_IDX_MAPPING.may_load(deps.storage, &validator_addr).unwrap();
+        OFF_CHAIN_VALIDATOR_IDX_MAPPING.may_load(deps.storage, &validator_addr)?;
 
     if optional_validator.is_some() {
         return Err(ContractError::ValidatorAlreadyExists {});
@@ -1107,12 +1169,12 @@ fn add_off_chain_validator(deps: DepsMut, info: MessageInfo, validator_addr: Add
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::OFF_CHAIN_METRICS_FOR_VALIDATOR;
+    use crate::msg::OffChainValidatorMetrics;
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
     use cosmwasm_std::{coins, OwnedDeps, Uint128};
-    use crate::constants::OFF_CHAIN_METRICS_FOR_VALIDATOR;
-    use crate::msg::OffChainValidatorMetrics;
 
     const TEST_VALIDATOR_OPR_ADDR: &str = "valid0001";
     const TEST_VALIDATOR_ACC_ADDR: &str = "validacc001";
@@ -1240,7 +1302,12 @@ mod tests {
 
         // delete one validator from this timestamp metrics
         let result = delete_metrics_for_timestamp(
-            dependencies.as_mut(), get_test_msg_info(), TEST_TIMESTAMP_1, 0, 1);
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            TEST_TIMESTAMP_1,
+            0,
+            1,
+        );
 
         // check if result is okay
         assert!(result.as_ref().ok().is_some());
@@ -1257,7 +1324,12 @@ mod tests {
 
         // delete second validator from this timestamp metrics
         let result = delete_metrics_for_timestamp(
-            dependencies.as_mut(), get_test_msg_info(), TEST_TIMESTAMP_1, 1, 1);
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            TEST_TIMESTAMP_1,
+            1,
+            1,
+        );
 
         // check if result is okay
         assert!(result.as_ref().ok().is_some());
@@ -1290,7 +1362,10 @@ mod tests {
         delete_metrics_for_timestamp(
             dependencies.as_mut(),
             get_test_msg_info(),
-            TEST_TIMESTAMP_1, 0, 2);
+            TEST_TIMESTAMP_1,
+            0,
+            2,
+        );
 
         let result = remove_timestamp(dependencies.as_mut(), get_test_msg_info(), TEST_TIMESTAMP_1);
     }
@@ -1357,13 +1432,15 @@ mod tests {
     #[test]
     fn test_create_state_and_increment() {
         let mut dependencies = instantiate_test_contract();
-        let off_chain_state =
-            OFF_CHAIN_STATE.load(dependencies.as_mut().storage);
+        let off_chain_state = OFF_CHAIN_STATE.load(dependencies.as_mut().storage);
 
         assert!(off_chain_state.is_ok());
 
-        add_off_chain_validator(dependencies.as_mut(), get_test_msg_info(),
-                                Addr::unchecked(TEST_VALIDATOR_OPR_ADDR));
+        add_off_chain_validator(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
+        );
 
         let updated_state = get_off_chain_state(dependencies.as_ref()).unwrap();
 
@@ -1374,92 +1451,145 @@ mod tests {
     fn test_off_chain_timestamp_details() {
         let mut dependencies = instantiate_test_contract();
         let timestamp = get_test_timestamp_0();
-        let before_data =
-            get_off_chain_timestamp_details(dependencies.as_ref(), timestamp);
+        let before_data = get_off_chain_timestamp_details(dependencies.as_ref(), timestamp);
 
         assert!(before_data.is_err());
 
-        let saved_data =
-            save_off_chain_details(dependencies.as_mut(), get_test_msg_info(),
-                               timestamp, get_test_off_chain_metrics());
+        let saved_data = save_off_chain_details(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            timestamp,
+            get_test_off_chain_timestamp_details(),
+        );
 
         assert!(saved_data.is_ok());
 
-        let after_data =
-            get_off_chain_timestamp_details(dependencies.as_ref(), timestamp);
+        let after_data = get_off_chain_timestamp_details(dependencies.as_ref(), timestamp);
 
         assert!(after_data.is_ok());
         assert_eq!(after_data.unwrap().timestamp, timestamp);
     }
 
-    //todo: update
     #[test]
     fn test_add_off_chain_validator_metrics() {
-
         let mut dependencies = instantiate_test_contract();
-        let off_chain_timestamps = get_off_chain_metrics(
-            dependencies.as_ref(), get_test_timestamp_0(),
-            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR));
 
-        assert!(off_chain_timestamps.is_err());
+        add_off_chain_validator(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
+        );
 
-        let saved_details =
-            save_off_chain_details(dependencies.as_mut(), get_test_msg_info(),
-            get_test_timestamp_0(), get_test_off_chain_metrics());
+        let off_chain_metrics_result = get_off_chain_metrics(
+            dependencies.as_ref(),
+            get_test_timestamp_0(),
+            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
+        );
+
+        assert!(off_chain_metrics_result.is_err());
+
+        let saved_details = save_off_chain_details(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            get_test_timestamp_0(),
+            get_test_off_chain_timestamp_details(),
+        );
 
         assert!(saved_details.is_ok());
 
+        let test_metric = get_test_off_chain_validator_metric();
+
         let saved_data = add_off_chain_validator_metrics(
-            dependencies.as_mut(), get_test_msg_info(), get_test_timestamp_0(),
-            vec![get_test_off_chain_validator_metric()]);
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            get_test_timestamp_0(),
+            vec![test_metric.clone()],
+        );
 
         assert!(saved_data.is_ok());
 
         let after_data = get_off_chain_metrics(
-            dependencies.as_ref(), get_test_timestamp_0(),
-            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR));
+            dependencies.as_ref(),
+            get_test_timestamp_0(),
+            test_metric.opr_address,
+        );
 
         assert!(after_data.is_ok());
-        // println!("{:?}", off_chain_timestamps);
-        // let metrics = get_test_off_chain_metrics();
-        // assert!(add_off_chain_validator_metrics(dependencies.as_mut(), get_test_msg_info(),
-        //                               metrics.clone()).is_ok());
-        //
-        // let fetched_metrics = get_off_chain_metrics(
-        //     dependencies.as_ref(), metrics.timestamp.clone()).unwrap();
-        //
-        // let fetched_timestamps = get_off_chain_metrics_timestamps(dependencies.as_ref()).unwrap();
-        //
-        // assert_eq!(fetched_timestamps.timestamps.len(), 1);
-        // assert_eq!(fetched_timestamps.timestamps.get(0).unwrap(), &metrics.timestamp.clone());
-        //
-        // assert_eq!(metrics, fetched_metrics);
     }
 
-    //todo: update
+    #[test]
+    fn test_get_off_chain_timestamps() {
+        let mut dependencies = instantiate_test_contract();
+
+        let mut test_timestamp = 100000;
+        let mut test_timestamp_details = get_test_off_chain_timestamp_details();
+
+        test_timestamp_details.timestamp = test_timestamp;
+
+        let saved_details = save_off_chain_details(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            test_timestamp,
+            get_test_off_chain_timestamp_details(),
+        );
+
+        assert!(saved_details.is_ok());
+
+        let timestamps = get_off_chain_metrics_timestamps(dependencies.as_ref());
+
+        assert!(timestamps.is_ok());
+    }
+
     #[test]
     fn test_delete_off_chain_metrics_timestamp() {
-        // let mut dependencies = instantiate_test_contract();
-        // let off_chain_timestamps = OFF_CHAIN_TIMESTAMPS.load(dependencies.as_mut().storage);
-        // println!("{:?}", off_chain_timestamps);
-        // let metrics = get_test_off_chain_metrics();
-        // assert!(add_off_chain_metrics(dependencies.as_mut(), get_test_msg_info(),
-        //                               metrics.clone()).is_ok());
-        //
-        // let response = remove_off_chain_metrics_for_timestamp(
-        //     dependencies.as_mut(), get_test_msg_info(), metrics.timestamp.clone())
-        //         .unwrap();
-        //
-        // assert_eq!(response.attributes.get(1).unwrap().value, "timestamp successfully removed");
-        //
-        // let fetched_timestamps = get_off_chain_metrics_timestamps(dependencies.as_ref()).unwrap();
-        //
-        // assert_eq!(fetched_timestamps.timestamps.len(), 0);
+        let mut dependencies = instantiate_test_contract();
+
+        let mut test_timestamp = 100000;
+        let mut test_timestamp_details = get_test_off_chain_timestamp_details();
+
+        test_timestamp_details.timestamp = test_timestamp;
+
+        let add_validator = add_off_chain_validator(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
+        );
+
+        assert!(add_validator.is_ok());
+
+        let saved_details = save_off_chain_details(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            test_timestamp,
+            get_test_off_chain_timestamp_details(),
+        );
+
+        assert!(saved_details.is_ok());
+
+        let mut test_metric = get_test_off_chain_validator_metric().clone();
+
+        let saved_data = add_off_chain_validator_metrics(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            test_timestamp,
+            vec![test_metric],
+        );
+        let delete_off_chain_timestamp = remove_off_chain_metrics_for_timestamp(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            test_timestamp,
+        );
+
+        assert!(delete_off_chain_timestamp.is_ok());
     }
-    fn get_test_off_chain_metrics() -> OffchainTimestampDetails {
+
+    fn get_test_off_chain_timestamp_details() -> OffchainTimestampDetails {
         OffchainTimestampDetails {
             timestamp: get_test_timestamp_0(),
-            conversion_ratios_to_luna: vec![("ust".to_string(), Decimal::from_ratio(52 as u32, 3 as u32))]
+            conversion_ratios_to_luna: vec![(
+                "ust".to_string(),
+                Decimal::from_ratio(52 as u32, 3 as u32),
+            )],
         }
     }
 
@@ -1469,8 +1599,9 @@ mod tests {
 
     fn get_test_off_chain_validator_metric() -> OffChainValidatorMetrics {
         OffChainValidatorMetrics {
+            validator_idx: 0,
             opr_address: Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
-            apr: Decimal::from_ratio(110 as u32, 100 as u32)
+            apr: Decimal::from_ratio(110 as u32, 100 as u32),
         }
     }
 }
