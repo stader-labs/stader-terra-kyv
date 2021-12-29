@@ -3,12 +3,12 @@ use crate::error::ContractError;
 use crate::msg::QueryMsg::GetOffChainMetricsTimestamps;
 use crate::msg::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidatorMetrics,
-    OffchainTimestampDetails, QueryMsg, ValidatorAprResponse,
+    OffchainTimestampMetaData, QueryMsg, ValidatorAprResponse,
 };
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::state::{
     OffChainState, ValidatorAccounts, OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR,
-    OFF_CHAIN_TIMESTAMPS, OFF_CHAIN_TIMESTAMP_DETAILS, OFF_CHAIN_VALIDATOR_IDX_MAPPING,
+    OFF_CHAIN_TIMESTAMPS, OFF_CHAIN_TIMESTAMP_META_DATA, OFF_CHAIN_VALIDATOR_IDX_MAPPING,
 };
 use crate::util::{
     compute_apr, decimal_division_in_256, decimal_multiplication_in_256, decimal_summation_in_256,
@@ -144,19 +144,19 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&get_off_chain_metrics_timestamps(deps)?)
         }
         QueryMsg::GetOffChainState {} => to_binary(&get_off_chain_state(deps)?),
-        QueryMsg::GetOffChainTimestampDetails { timestamp } => {
-            to_binary(&get_off_chain_timestamp_details(deps, timestamp)?)
+        QueryMsg::GetOffChainTimestampMetaData { timestamp } => {
+            to_binary(&get_off_chain_timestamp_meta_data(deps, timestamp)?)
         }
     }
 }
 
-fn get_off_chain_timestamp_details(
+fn get_off_chain_timestamp_meta_data(
     deps: Deps,
     timestamp: u64,
-) -> StdResult<OffchainTimestampDetails> {
-    let timestamp_details =
-        OFF_CHAIN_TIMESTAMP_DETAILS.load(deps.storage, U64Key::from(timestamp))?;
-    Ok(timestamp_details)
+) -> StdResult<OffchainTimestampMetaData> {
+    let timestamp_meta_data =
+        OFF_CHAIN_TIMESTAMP_META_DATA.load(deps.storage, U64Key::from(timestamp))?;
+    Ok(timestamp_meta_data)
 }
 
 fn get_off_chain_state(deps: Deps) -> StdResult<OffChainState> {
@@ -219,10 +219,10 @@ pub fn execute(
         }
 
         //todo: test
-        ExecuteMsg::OffChainRecordTimestampDetails {
+        ExecuteMsg::OffChainRecordTimestampMetaData {
             timestamp,
-            timestamp_details,
-        } => save_off_chain_details(deps, info, timestamp, timestamp_details),
+            timestamp_meta_data,
+        } => save_off_chain_details(deps, info, timestamp, timestamp_meta_data),
 
         //todo: test
         ExecuteMsg::OffChainAddValidatorMetricsForTimestamp {
@@ -236,22 +236,22 @@ fn save_off_chain_details(
     deps: DepsMut,
     info: MessageInfo,
     timestamp: u64,
-    details: OffchainTimestampDetails,
+    details: OffchainTimestampMetaData,
 ) -> Result<Response, ContractError> {
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
     }
 
-    let off_chain_timestamp_details =
-        OFF_CHAIN_TIMESTAMP_DETAILS.may_load(deps.storage, U64Key::from(timestamp));
+    let timestamp_meta_data =
+        OFF_CHAIN_TIMESTAMP_META_DATA.may_load(deps.storage, U64Key::from(timestamp));
 
-    println!("{:?}", off_chain_timestamp_details);
+    println!("{:?}", timestamp_meta_data);
 
-    if off_chain_timestamp_details.unwrap().is_some() {
+    if timestamp_meta_data.unwrap().is_some() {
         return Err(ContractError::OffChainDetailsAlreadyRecorded);
     }
 
-    OFF_CHAIN_TIMESTAMP_DETAILS.save(deps.storage, U64Key::from(timestamp), &details)?;
+    OFF_CHAIN_TIMESTAMP_META_DATA.save(deps.storage, U64Key::from(timestamp), &details)?;
     OFF_CHAIN_TIMESTAMPS.save(deps.storage, U64Key::from(timestamp), &true);
 
     return Ok(Response::new()
@@ -1033,7 +1033,7 @@ fn remove_off_chain_metrics_for_timestamp(
     }
 
     OFF_CHAIN_TIMESTAMPS.remove(deps.storage, U64Key::from(timestamp));
-    OFF_CHAIN_TIMESTAMP_DETAILS.remove(deps.storage, U64Key::from(timestamp));
+    OFF_CHAIN_TIMESTAMP_META_DATA.remove(deps.storage, U64Key::from(timestamp));
 
     let validator_idxs_to_remove: Vec<u16> = OFF_CHAIN_STATE_FOR_VALIDATOR
         .prefix(U64Key::from(timestamp))
@@ -1448,10 +1448,10 @@ mod tests {
     }
 
     #[test]
-    fn test_off_chain_timestamp_details() {
+    fn test_off_chain_timestamp_meta_data() {
         let mut dependencies = instantiate_test_contract();
         let timestamp = get_test_timestamp_0();
-        let before_data = get_off_chain_timestamp_details(dependencies.as_ref(), timestamp);
+        let before_data = get_off_chain_timestamp_meta_data(dependencies.as_ref(), timestamp);
 
         assert!(before_data.is_err());
 
@@ -1459,12 +1459,12 @@ mod tests {
             dependencies.as_mut(),
             get_test_msg_info(),
             timestamp,
-            get_test_off_chain_timestamp_details(),
+            get_test_off_chain_timestamp_meta_data(),
         );
 
         assert!(saved_data.is_ok());
 
-        let after_data = get_off_chain_timestamp_details(dependencies.as_ref(), timestamp);
+        let after_data = get_off_chain_timestamp_meta_data(dependencies.as_ref(), timestamp);
 
         assert!(after_data.is_ok());
         assert_eq!(after_data.unwrap().timestamp, timestamp);
@@ -1492,7 +1492,7 @@ mod tests {
             dependencies.as_mut(),
             get_test_msg_info(),
             get_test_timestamp_0(),
-            get_test_off_chain_timestamp_details(),
+            get_test_off_chain_timestamp_meta_data(),
         );
 
         assert!(saved_details.is_ok());
@@ -1522,15 +1522,15 @@ mod tests {
         let mut dependencies = instantiate_test_contract();
 
         let mut test_timestamp = 100000;
-        let mut test_timestamp_details = get_test_off_chain_timestamp_details();
+        let mut test_timestamp_meta_data = get_test_off_chain_timestamp_meta_data();
 
-        test_timestamp_details.timestamp = test_timestamp;
+        test_timestamp_meta_data.timestamp = test_timestamp;
 
         let saved_details = save_off_chain_details(
             dependencies.as_mut(),
             get_test_msg_info(),
             test_timestamp,
-            get_test_off_chain_timestamp_details(),
+            get_test_off_chain_timestamp_meta_data(),
         );
 
         assert!(saved_details.is_ok());
@@ -1545,9 +1545,9 @@ mod tests {
         let mut dependencies = instantiate_test_contract();
 
         let mut test_timestamp = 100000;
-        let mut test_timestamp_details = get_test_off_chain_timestamp_details();
+        let mut test_timestamp_meta_data = get_test_off_chain_timestamp_meta_data();
 
-        test_timestamp_details.timestamp = test_timestamp;
+        test_timestamp_meta_data.timestamp = test_timestamp;
 
         let add_validator = add_off_chain_validator(
             dependencies.as_mut(),
@@ -1561,7 +1561,7 @@ mod tests {
             dependencies.as_mut(),
             get_test_msg_info(),
             test_timestamp,
-            get_test_off_chain_timestamp_details(),
+            get_test_off_chain_timestamp_meta_data(),
         );
 
         assert!(saved_details.is_ok());
@@ -1583,8 +1583,8 @@ mod tests {
         assert!(delete_off_chain_timestamp.is_ok());
     }
 
-    fn get_test_off_chain_timestamp_details() -> OffchainTimestampDetails {
-        OffchainTimestampDetails {
+    fn get_test_off_chain_timestamp_meta_data() -> OffchainTimestampMetaData {
+        OffchainTimestampMetaData {
             timestamp: get_test_timestamp_0(),
             conversion_ratios_to_luna: vec![(
                 "ust".to_string(),

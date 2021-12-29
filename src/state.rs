@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::constants;
-use crate::msg::{OffChainTimestamps, OffChainValidatorMetrics, OffchainTimestampDetails};
+use crate::msg::{OffChainTimestamps, OffChainValidatorMetrics, OffchainTimestampMetaData};
 use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
 use cw_storage_plus::{Item, Map, U16Key, U64Key};
 
@@ -64,7 +64,7 @@ pub const OFF_CHAIN_STATE: Item<OffChainState> = Item::new(constants::OFF_CHAIN_
 pub const OFF_CHAIN_VALIDATOR_IDX_MAPPING: Map<&Addr, u16> =
     Map::new(constants::OFF_CHAIN_VALIDATOR_IDX_MAPPING);
 
-pub const OFF_CHAIN_TIMESTAMP_DETAILS: Map<U64Key, OffchainTimestampDetails> =
+pub const OFF_CHAIN_TIMESTAMP_META_DATA: Map<U64Key, OffchainTimestampMetaData> =
     Map::new(constants::OFFCHAIN_TIMESTAMP_DETAILS);
 
 pub const OFF_CHAIN_STATE_FOR_VALIDATOR: Map<(U64Key, U16Key), OffChainValidatorMetrics> =

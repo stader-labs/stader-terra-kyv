@@ -20,7 +20,7 @@ pub struct InstantiateMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct OffchainTimestampDetails {
+pub struct OffchainTimestampMetaData {
     pub timestamp: u64,
     pub conversion_ratios_to_luna: Vec<(String, Decimal)>,
 }
@@ -74,9 +74,9 @@ pub enum ExecuteMsg {
     OffChainAddValidator {
         oper_addr: Addr,
     },
-    OffChainRecordTimestampDetails {
+    OffChainRecordTimestampMetaData {
         timestamp: u64,
-        timestamp_details: OffchainTimestampDetails,
+        timestamp_meta_data: OffchainTimestampMetaData,
     },
     OffChainAddValidatorMetricsForTimestamp {
         timestamp: u64,
@@ -124,7 +124,7 @@ pub enum QueryMsg {
     },
     GetOffChainState {},
     GetOffChainMetricsTimestamps {},
-    GetOffChainTimestampDetails {
+    GetOffChainTimestampMetaData {
         timestamp: u64,
     },
 }
