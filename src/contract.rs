@@ -56,7 +56,7 @@ pub fn instantiate(
 
     // offchain publishing related states
     let off_chain_state = OffChainState {
-        new_validator_idx: 0,
+        next_validator_idx: 0,
     };
 
     OFF_CHAIN_STATE.save(deps.storage, &off_chain_state)?;
@@ -85,7 +85,7 @@ pub fn migrate(
 
     // offchain publishing related states
     let off_chain_state = OffChainState {
-        new_validator_idx: 0,
+        next_validator_idx: 0,
     };
 
     OFF_CHAIN_STATE.save(_deps.storage, &off_chain_state)?;
@@ -1153,11 +1153,11 @@ fn add_off_chain_validator(
     if optional_validator.is_some() {
         return Err(ContractError::ValidatorAlreadyExists {});
     }
-    let next_validator_idx = off_chain_state.new_validator_idx;
+    let next_validator_idx = off_chain_state.next_validator_idx;
     OFF_CHAIN_VALIDATOR_IDX_MAPPING.save(deps.storage, &validator_addr, &next_validator_idx);
 
     OFF_CHAIN_STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.new_validator_idx = next_validator_idx + 1;
+        s.next_validator_idx = next_validator_idx + 1;
         Ok(s)
     });
 
@@ -1444,7 +1444,7 @@ mod tests {
 
         let updated_state = get_off_chain_state(dependencies.as_ref()).unwrap();
 
-        assert_eq!(1, updated_state.new_validator_idx);
+        assert_eq!(1, updated_state.next_validator_idx);
     }
 
     #[test]
