@@ -210,9 +210,9 @@ pub fn execute(
         ),
 
         ExecuteMsg::RemoveTimestamp { timestamp } => remove_timestamp(deps, info, timestamp),
-        ExecuteMsg::RemoveOffChainMetricsForTimestamp { timestamp } => {
-            remove_off_chain_metrics_for_timestamp(deps, info, timestamp)
-        }
+        ExecuteMsg::RemoveOffChainMetricsForTimestamp { timestamp, no_of_validators_to_remove }
+        => { remove_off_chain_metrics_for_timestamp(deps, info, timestamp, no_of_validators_to_remove) }
+
         //todo: test
         ExecuteMsg::OffChainAddValidator { oper_addr } => {
             add_off_chain_validator(deps, info, oper_addr)
@@ -1021,8 +1021,11 @@ fn remove_off_chain_metrics_for_timestamp(
     deps: DepsMut,
     info: MessageInfo,
     timestamp: u64,
+    no_of_validators_to_remove: usize,
 ) -> Result<Response, ContractError> {
     let mut timestamp_existed = true;
+    let mut timestamp_removed = false;
+    let mut validators_removed = 0;
 
     if !sender_is_manager(&deps, &info) {
         return Err(ContractError::Unauthorized {});
@@ -1032,30 +1035,44 @@ fn remove_off_chain_metrics_for_timestamp(
         timestamp_existed = false;
     }
 
-    OFF_CHAIN_TIMESTAMPS.remove(deps.storage, U64Key::from(timestamp));
-    OFF_CHAIN_TIMESTAMP_META_DATA.remove(deps.storage, U64Key::from(timestamp));
+    else {
+        let validator_idxs_to_remove: Vec<u16> = OFF_CHAIN_STATE_FOR_VALIDATOR
+            .prefix(U64Key::from(timestamp))
+            .range(deps.storage, Option::None, Option::None, Order::Ascending)
+            .take(no_of_validators_to_remove)
+            .map(|item| return item.unwrap().1.validator_idx)
+            .collect();
 
-    let validator_idxs_to_remove: Vec<u16> = OFF_CHAIN_STATE_FOR_VALIDATOR
-        .prefix(U64Key::from(timestamp))
-        .range(deps.storage, Option::None, Option::None, Order::Ascending)
-        .map(|item| return item.unwrap().1.validator_idx)
-        .collect();
+        validators_removed = validator_idxs_to_remove.len();
 
-    validator_idxs_to_remove.into_iter().for_each(|idx| {
-        OFF_CHAIN_STATE_FOR_VALIDATOR
-            .remove(deps.storage, (U64Key::from(timestamp), U16Key::from(idx)))
-    });
+        validator_idxs_to_remove.into_iter().for_each(|idx| {
+            OFF_CHAIN_STATE_FOR_VALIDATOR
+                .remove(deps.storage, (U64Key::from(timestamp), U16Key::from(idx)))
+        });
+
+
+        if validators_removed < no_of_validators_to_remove {
+            timestamp_removed = true;
+            OFF_CHAIN_TIMESTAMPS.remove(deps.storage, U64Key::from(timestamp));
+            OFF_CHAIN_TIMESTAMP_META_DATA.remove(deps.storage, U64Key::from(timestamp));
+        }
+    }
 
     Ok(Response::new()
         .add_attribute("method", "remove_off_chain_metrics_for_timestamp")
         .add_attribute(
-            "message",
-            if timestamp_existed {
+            "timestamp removed : ",
+            if timestamp_existed && timestamp_removed {
                 "timestamp successfully removed"
+            } else if timestamp_existed && !timestamp_removed {
+                "timestamp not fully removed, need to run more paginated requests"
             } else {
-                "timestamp didn't exist"
-            },
-        ))
+                "timestamp fully removed"
+            }
+        )
+        .add_attribute("validator metrics removed : ", validators_removed.to_string())
+
+    )
 }
 
 fn add_off_chain_validator_metrics(
@@ -1578,6 +1595,7 @@ mod tests {
             dependencies.as_mut(),
             get_test_msg_info(),
             test_timestamp,
+            10
         );
 
         assert!(delete_off_chain_timestamp.is_ok());

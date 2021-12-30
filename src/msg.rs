@@ -70,6 +70,7 @@ pub enum ExecuteMsg {
     },
     RemoveOffChainMetricsForTimestamp {
         timestamp: u64,
+        no_of_validators_to_remove: usize
     },
     OffChainAddValidator {
         oper_addr: Addr,
