@@ -210,21 +210,25 @@ pub fn execute(
         ),
 
         ExecuteMsg::RemoveTimestamp { timestamp } => remove_timestamp(deps, info, timestamp),
-        ExecuteMsg::RemoveOffChainMetricsForTimestamp { timestamp, no_of_validators_to_remove }
-        => { remove_off_chain_metrics_for_timestamp(deps, info, timestamp, no_of_validators_to_remove) }
+        ExecuteMsg::RemoveOffChainMetricsForTimestamp {
+            timestamp,
+            no_of_validators_to_remove,
+        } => remove_off_chain_metrics_for_timestamp(
+            deps,
+            info,
+            timestamp,
+            no_of_validators_to_remove,
+        ),
 
-        //todo: test
         ExecuteMsg::OffChainAddValidator { oper_addr } => {
             add_off_chain_validator(deps, info, oper_addr)
         }
 
-        //todo: test
         ExecuteMsg::OffChainRecordTimestampMetaData {
             timestamp,
             timestamp_meta_data,
         } => save_off_chain_details(deps, info, timestamp, timestamp_meta_data),
 
-        //todo: test
         ExecuteMsg::OffChainAddValidatorMetricsForTimestamp {
             timestamp,
             validator_metrics,
@@ -244,8 +248,6 @@ fn save_off_chain_details(
 
     let timestamp_meta_data =
         OFF_CHAIN_TIMESTAMP_META_DATA.may_load(deps.storage, U64Key::from(timestamp));
-
-    println!("{:?}", timestamp_meta_data);
 
     if timestamp_meta_data.unwrap().is_some() {
         return Err(ContractError::OffChainDetailsAlreadyRecorded);
@@ -1016,7 +1018,6 @@ fn query_validators_metrics_by_timestamp(
 
 // off chain code
 
-//todo: test, validate
 fn remove_off_chain_metrics_for_timestamp(
     deps: DepsMut,
     info: MessageInfo,
@@ -1033,9 +1034,7 @@ fn remove_off_chain_metrics_for_timestamp(
 
     if !OFF_CHAIN_TIMESTAMPS.has(deps.storage, U64Key::from(timestamp)) {
         timestamp_existed = false;
-    }
-
-    else {
+    } else {
         let validator_idxs_to_remove: Vec<u16> = OFF_CHAIN_STATE_FOR_VALIDATOR
             .prefix(U64Key::from(timestamp))
             .range(deps.storage, Option::None, Option::None, Order::Ascending)
@@ -1049,7 +1048,6 @@ fn remove_off_chain_metrics_for_timestamp(
             OFF_CHAIN_STATE_FOR_VALIDATOR
                 .remove(deps.storage, (U64Key::from(timestamp), U16Key::from(idx)))
         });
-
 
         if validators_removed < no_of_validators_to_remove {
             timestamp_removed = true;
@@ -1068,11 +1066,12 @@ fn remove_off_chain_metrics_for_timestamp(
                 "timestamp not fully removed, need to run more paginated requests"
             } else {
                 "timestamp fully removed"
-            }
+            },
         )
-        .add_attribute("validator metrics removed : ", validators_removed.to_string())
-
-    )
+        .add_attribute(
+            "validator metrics removed : ",
+            validators_removed.to_string(),
+        ))
 }
 
 fn add_off_chain_validator_metrics(
@@ -1082,11 +1081,8 @@ fn add_off_chain_validator_metrics(
     metrics_to_be_added: Vec<OffChainValidatorMetrics>,
 ) -> Result<Response, ContractError> {
     if !sender_is_manager(&deps, &info) {
-        println!("Hello 1 !");
         return Err(ContractError::Unauthorized {});
     }
-
-    println!("Metrics to be added: {:?}", metrics_to_be_added);
 
     for validator_metric in metrics_to_be_added {
         let validator_idx = OFF_CHAIN_VALIDATOR_IDX_MAPPING
@@ -1119,7 +1115,6 @@ fn off_chain_metrics_exists(deps: &DepsMut, timestamp: u64, validator_idx: u16) 
         .is_some()
 }
 
-//todo: Implement
 fn get_off_chain_metrics_timestamps(deps: Deps) -> StdResult<OffChainTimestamps> {
     let keys: Vec<Vec<u8>> = OFF_CHAIN_TIMESTAMPS
         .keys(deps.storage, Option::None, Option::None, Order::Ascending)
@@ -1135,7 +1130,6 @@ fn get_off_chain_metrics_timestamps(deps: Deps) -> StdResult<OffChainTimestamps>
     })
 }
 
-//todo: implement
 fn get_off_chain_metrics(
     deps: Deps,
     timestamp: u64,
@@ -1145,8 +1139,6 @@ fn get_off_chain_metrics(
     let keys: Vec<Vec<u8>> = OFF_CHAIN_STATE_FOR_VALIDATOR
         .keys(deps.storage, Option::None, Option::None, Order::Ascending)
         .collect();
-    println!("OFF_CHAIN_STATE_FOR_VALIDATOR : {:?}", keys);
-
     let off_chain_state = OFF_CHAIN_STATE_FOR_VALIDATOR.load(
         deps.storage,
         (U64Key::from(timestamp), U16Key::from(validator_idx)),
@@ -1595,7 +1587,7 @@ mod tests {
             dependencies.as_mut(),
             get_test_msg_info(),
             test_timestamp,
-            10
+            10,
         );
 
         assert!(delete_off_chain_timestamp.is_ok());
