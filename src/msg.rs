@@ -147,3 +147,9 @@ pub struct ValidatorAprResponse {
 pub struct OffChainTimestamps {
     pub timestamps: Vec<u64>,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainValidators {
+    pub validator_addresses: Vec<Addr>
+}

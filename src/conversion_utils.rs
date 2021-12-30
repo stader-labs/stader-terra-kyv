@@ -1,3 +1,5 @@
+use cosmwasm_std::Addr;
+
 pub(crate) fn u64_from_vec_u8(vector: Vec<u8>) -> u64 {
     let byte_0 = vector.get(0).unwrap_or(&0).clone();
     let byte_1 = vector.get(1).unwrap_or(&0).clone();
@@ -18,10 +20,16 @@ pub(crate) fn u64_from_vec_u8(vector: Vec<u8>) -> u64 {
         + ((byte_1 as u64) << (48))
         + ((byte_0 as u64) << (56))
 }
+pub(crate) fn addr_from_vec_u8(vector: Vec<u8>) -> Addr {
+    let mut addr_string = String::from_utf8(vector).unwrap();
+    Addr::unchecked(addr_string)
+}
+
 
 #[cfg(test)]
 mod tests {
-    use crate::conversion_utils::u64_from_vec_u8;
+    use cosmwasm_std::Addr;
+    use crate::conversion_utils::{addr_from_vec_u8, u64_from_vec_u8};
 
     #[test]
     pub fn simple_test_0_0() {
@@ -45,5 +53,14 @@ mod tests {
         let expected: u64 = 100000;
 
         assert_eq!(actual_result, expected);
+    }
+
+    #[test]
+    pub fn address_test() {
+        let input = vec![b't', b'e', b's', b't'];
+        let expected = Addr::unchecked("test");
+        let actual = addr_from_vec_u8(input);
+
+        assert_eq!(actual, expected);
     }
 }

@@ -1,10 +1,7 @@
 use crate::conversion_utils;
 use crate::error::ContractError;
 use crate::msg::QueryMsg::GetOffChainMetricsTimestamps;
-use crate::msg::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidatorMetrics,
-    OffchainTimestampMetaData, QueryMsg, ValidatorAprResponse,
-};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidatorMetrics, OffchainTimestampMetaData, QueryMsg, ValidatorAprResponse, OffChainValidators};
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::state::{
     OffChainState, ValidatorAccounts, OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR,
@@ -1018,6 +1015,35 @@ fn query_validators_metrics_by_timestamp(
 
 // off chain code
 
+fn add_off_chain_validator(
+    deps: DepsMut,
+    info: MessageInfo,
+    validator_addr: Addr,
+) -> Result<Response, ContractError> {
+    if !sender_is_manager(&deps, &info) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let off_chain_state = OFF_CHAIN_STATE.load(deps.storage)?;
+    let optional_validator =
+        OFF_CHAIN_VALIDATOR_IDX_MAPPING.may_load(deps.storage, &validator_addr)?;
+
+    if optional_validator.is_some() {
+        return Err(ContractError::ValidatorAlreadyExists {});
+    }
+    let next_validator_idx = off_chain_state.next_validator_idx;
+    OFF_CHAIN_VALIDATOR_IDX_MAPPING.save(deps.storage, &validator_addr, &next_validator_idx);
+
+    OFF_CHAIN_STATE.update(deps.storage, |mut s| -> StdResult<_> {
+        s.next_validator_idx = next_validator_idx + 1;
+        Ok(s)
+    });
+
+    Ok(Response::new()
+        .add_attribute("validator_idx", next_validator_idx.to_string())
+        .add_attribute("validator_addr", validator_addr))
+}
+
 fn remove_off_chain_metrics_for_timestamp(
     deps: DepsMut,
     info: MessageInfo,
@@ -1120,8 +1146,7 @@ fn get_off_chain_metrics_timestamps(deps: Deps) -> StdResult<OffChainTimestamps>
         .keys(deps.storage, Option::None, Option::None, Order::Ascending)
         .collect();
 
-    let off_chain_timestamps: Vec<u64> = OFF_CHAIN_TIMESTAMPS
-        .keys(deps.storage, Option::None, Option::None, Order::Ascending)
+    let off_chain_timestamps: Vec<u64> = keys.into_iter()
         .map(|item| conversion_utils::u64_from_vec_u8(item))
         .collect();
 
@@ -1146,33 +1171,19 @@ fn get_off_chain_metrics(
     Ok(off_chain_state)
 }
 
-fn add_off_chain_validator(
-    deps: DepsMut,
-    info: MessageInfo,
-    validator_addr: Addr,
-) -> Result<Response, ContractError> {
-    if !sender_is_manager(&deps, &info) {
-        return Err(ContractError::Unauthorized {});
-    }
+fn get_off_chain_validators(
+    deps: Deps) -> StdResult<OffChainValidators>{
+    let keys: Vec<Vec<u8>> = OFF_CHAIN_VALIDATOR_IDX_MAPPING.keys(
+        deps.storage, Option::None, Option::None, Order::Ascending)
+        .collect();
 
-    let off_chain_state = OFF_CHAIN_STATE.load(deps.storage)?;
-    let optional_validator =
-        OFF_CHAIN_VALIDATOR_IDX_MAPPING.may_load(deps.storage, &validator_addr)?;
+    let off_chain_validator_addresses: Vec<Addr> = keys.into_iter()
+        .map(|item| conversion_utils::addr_from_vec_u8(item))
+        .collect();
 
-    if optional_validator.is_some() {
-        return Err(ContractError::ValidatorAlreadyExists {});
-    }
-    let next_validator_idx = off_chain_state.next_validator_idx;
-    OFF_CHAIN_VALIDATOR_IDX_MAPPING.save(deps.storage, &validator_addr, &next_validator_idx);
-
-    OFF_CHAIN_STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.next_validator_idx = next_validator_idx + 1;
-        Ok(s)
-    });
-
-    Ok(Response::new()
-        .add_attribute("validator_idx", next_validator_idx.to_string())
-        .add_attribute("validator_addr", validator_addr))
+    Ok(OffChainValidators {
+        validator_addresses: off_chain_validator_addresses
+    })
 }
 
 #[cfg(test)]
@@ -1591,6 +1602,23 @@ mod tests {
         );
 
         assert!(delete_off_chain_timestamp.is_ok());
+    }
+
+    #[test]
+    fn test_get_off_chain_validators() {
+        let mut dependencies = instantiate_test_contract();
+
+        add_off_chain_validator(
+            dependencies.as_mut(),
+            get_test_msg_info(),
+            Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
+        );
+
+        let get_off_chain_validators = get_off_chain_validators(dependencies.as_ref());
+
+        assert!(get_off_chain_validators.is_ok());
+
+        assert_eq!(get_off_chain_validators.unwrap().validator_addresses.len(), 1);
     }
 
     fn get_test_off_chain_timestamp_meta_data() -> OffchainTimestampMetaData {

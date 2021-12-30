@@ -71,17 +71,3 @@ pub const OFF_CHAIN_STATE_FOR_VALIDATOR: Map<(U64Key, U16Key), OffChainValidator
     Map::new(constants::OFF_CHAIN_METRICS_FOR_VALIDATOR);
 
 pub const OFF_CHAIN_TIMESTAMPS: Map<U64Key, bool> = Map::new("off_chain_timestamps");
-/*
-create a map of validators address to an index mapping [o]
-(apr)
-key storage might be redundant for a timestamp
-> Mapping to an index, incrementing id for a validator
-> Map<Addr, Index> address_mapping;
-> next_validator_ct = 0...         U16
-> Off_Chain_state : Take care in initiate and migrate
-
-> Push metrics : (Data will be in validator_addr, we can resolve in contract)
-               : Ensures loose coupling instead of tight
-*/
-
-// pub exchange_rates: Vec<(String, Decimal)>, // FOR TESTING - REMOVE THIS
