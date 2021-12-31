@@ -144,6 +144,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetOffChainTimestampMetaData { timestamp } => {
             to_binary(&get_off_chain_timestamp_meta_data(deps, timestamp)?)
         }
+        QueryMsg::GetOffChainValidators {} => {
+            to_binary(&get_off_chain_validators(deps)?)
+        }
     }
 }
 
@@ -1190,7 +1193,7 @@ fn get_off_chain_validators(
 mod tests {
     use super::*;
     use crate::constants::OFF_CHAIN_METRICS_FOR_VALIDATOR;
-    use crate::msg::OffChainValidatorMetrics;
+    use crate::msg::{ConversionRatio, OffChainValidatorMetrics};
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
@@ -1625,8 +1628,10 @@ mod tests {
         OffchainTimestampMetaData {
             timestamp: get_test_timestamp_0(),
             conversion_ratios_to_luna: vec![(
-                "ust".to_string(),
-                Decimal::from_ratio(52 as u32, 3 as u32),
+                ConversionRatio {
+                    denomination: "".to_string(),
+                    multiplier: (52 as f64 / 3 as f64)
+                }
             )],
         }
     }
@@ -1639,7 +1644,7 @@ mod tests {
         OffChainValidatorMetrics {
             validator_idx: 0,
             opr_address: Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
-            apr: Decimal::from_ratio(110 as u32, 100 as u32),
+            apr: (110 as f64 / 100 as f64),
         }
     }
 }

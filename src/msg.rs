@@ -22,7 +22,15 @@ pub struct InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub struct OffchainTimestampMetaData {
     pub timestamp: u64,
-    pub conversion_ratios_to_luna: Vec<(String, Decimal)>,
+    pub conversion_ratios_to_luna: Vec<ConversionRatio>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ConversionRatio {
+    pub denomination: String,
+    // instead of a Decimal for json serialize / deserialize issues.
+    pub multiplier: f64
 }
 
 // luna to usd
@@ -33,7 +41,7 @@ pub struct OffchainTimestampMetaData {
 pub struct OffChainValidatorMetrics {
     pub validator_idx: u16,
     pub opr_address: Addr,
-    pub apr: Decimal, // diff in currencies -> swap to luna -> (delta in luna (inc all curr) percentage)
+    pub apr: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -128,6 +136,7 @@ pub enum QueryMsg {
     GetOffChainTimestampMetaData {
         timestamp: u64,
     },
+    GetOffChainValidators {}
 }
 //Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
