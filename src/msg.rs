@@ -30,7 +30,7 @@ pub struct OffchainTimestampMetaData {
 pub struct ConversionRatio {
     pub denomination: String,
     // instead of a Decimal for json serialize / deserialize issues.
-    pub multiplier: Decimal
+    pub multiplier: Decimal,
 }
 
 // luna to usd
@@ -136,7 +136,7 @@ pub enum QueryMsg {
     GetOffChainTimestampMetaData {
         timestamp: u64,
     },
-    GetOffChainValidators {}
+    GetOffChainValidators {},
 }
 //Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -160,5 +160,5 @@ pub struct OffChainTimestamps {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct OffChainValidators {
-    pub validator_addresses: Vec<Addr>
+    pub validator_addresses: Vec<Addr>,
 }

@@ -1,7 +1,10 @@
 use crate::conversion_utils;
 use crate::error::ContractError;
 use crate::msg::QueryMsg::GetOffChainMetricsTimestamps;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidatorMetrics, OffchainTimestampMetaData, QueryMsg, ValidatorAprResponse, OffChainValidators};
+use crate::msg::{
+    ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidatorMetrics,
+    OffChainValidators, OffchainTimestampMetaData, QueryMsg, ValidatorAprResponse,
+};
 use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE};
 use crate::state::{
     OffChainState, ValidatorAccounts, OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR,
@@ -144,9 +147,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetOffChainTimestampMetaData { timestamp } => {
             to_binary(&get_off_chain_timestamp_meta_data(deps, timestamp)?)
         }
-        QueryMsg::GetOffChainValidators {} => {
-            to_binary(&get_off_chain_validators(deps)?)
-        }
+        QueryMsg::GetOffChainValidators {} => to_binary(&get_off_chain_validators(deps)?),
     }
 }
 
@@ -1149,7 +1150,8 @@ fn get_off_chain_metrics_timestamps(deps: Deps) -> StdResult<OffChainTimestamps>
         .keys(deps.storage, Option::None, Option::None, Order::Ascending)
         .collect();
 
-    let off_chain_timestamps: Vec<u64> = keys.into_iter()
+    let off_chain_timestamps: Vec<u64> = keys
+        .into_iter()
         .map(|item| conversion_utils::u64_from_vec_u8(item))
         .collect();
 
@@ -1174,18 +1176,18 @@ fn get_off_chain_metrics(
     Ok(off_chain_state)
 }
 
-fn get_off_chain_validators(
-    deps: Deps) -> StdResult<OffChainValidators>{
-    let keys: Vec<Vec<u8>> = OFF_CHAIN_VALIDATOR_IDX_MAPPING.keys(
-        deps.storage, Option::None, Option::None, Order::Ascending)
+fn get_off_chain_validators(deps: Deps) -> StdResult<OffChainValidators> {
+    let keys: Vec<Vec<u8>> = OFF_CHAIN_VALIDATOR_IDX_MAPPING
+        .keys(deps.storage, Option::None, Option::None, Order::Ascending)
         .collect();
 
-    let off_chain_validator_addresses: Vec<Addr> = keys.into_iter()
+    let off_chain_validator_addresses: Vec<Addr> = keys
+        .into_iter()
         .map(|item| conversion_utils::addr_from_vec_u8(item))
         .collect();
 
     Ok(OffChainValidators {
-        validator_addresses: off_chain_validator_addresses
+        validator_addresses: off_chain_validator_addresses,
     })
 }
 
@@ -1621,18 +1623,21 @@ mod tests {
 
         assert!(get_off_chain_validators.is_ok());
 
-        assert_eq!(get_off_chain_validators.unwrap().validator_addresses.len(), 1);
+        assert_eq!(
+            get_off_chain_validators.unwrap().validator_addresses.len(),
+            1
+        );
     }
 
     fn get_test_off_chain_timestamp_meta_data() -> OffchainTimestampMetaData {
         OffchainTimestampMetaData {
             timestamp: get_test_timestamp_0(),
-            conversion_ratios_to_luna: vec![(
-                ConversionRatio {
+            conversion_ratios_to_luna: vec![
+                (ConversionRatio {
                     denomination: "".to_string(),
-                    multiplier: Decimal::percent(156)
-                }
-            )],
+                    multiplier: Decimal::percent(156),
+                }),
+            ],
         }
     }
 

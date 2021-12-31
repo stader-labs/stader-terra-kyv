@@ -25,11 +25,10 @@ pub(crate) fn addr_from_vec_u8(vector: Vec<u8>) -> Addr {
     Addr::unchecked(addr_string)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::Addr;
     use crate::conversion_utils::{addr_from_vec_u8, u64_from_vec_u8};
+    use cosmwasm_std::Addr;
 
     #[test]
     pub fn simple_test_0_0() {
