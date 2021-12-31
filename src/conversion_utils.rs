@@ -12,16 +12,20 @@ pub(crate) fn u64_from_vec_u8(vector: Vec<u8>) -> u64 {
     let byte_7 = vector.get(7).unwrap_or(&0).clone();
 
     (byte_7 as u64)
-        + ((byte_6 as u64) << (8))
-        + ((byte_5 as u64) << (16))
-        + ((byte_4 as u64) << (24))
-        + ((byte_3 as u64) << (32))
-        + ((byte_2 as u64) << (40))
-        + ((byte_1 as u64) << (48))
-        + ((byte_0 as u64) << (56))
+        + ((byte_6 as u64) * (256 as u64))
+        + ((byte_5 as u64) * (65536 as u64))
+        + ((byte_4 as u64) * (16777216 as u64))
+        + ((byte_3 as u64) * (4294967296 as u64))
+        + ((byte_2 as u64) * (1099511627776 as u64))
+        + ((byte_1 as u64) * (281474976710656 as u64))
+        + ((byte_0 as u64) * (72057594037927940 as u64))
 }
 pub(crate) fn addr_from_vec_u8(vector: Vec<u8>) -> Addr {
-    let mut addr_string = String::from_utf8(vector).unwrap();
+
+    let addr_string = vector.into_iter()
+        .map(|value| {value as char})
+        .collect::<String>();
+
     Addr::unchecked(addr_string)
 }
 
