@@ -21,12 +21,10 @@ use cosmwasm_std::{
     StdError, StdResult, Storage, Uint128,
 };
 use cosmwasm_std::{BankMsg, Decimal};
-use cw_storage_plus::{Bound, PrimaryKey, U16Key, U64Key};
-use serde::de::DeserializeSeed;
+use cw_storage_plus::{Bound, U16Key, U64Key};
 use std::cmp;
 use std::cmp::min;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::ops::Sub;
 use terra_cosmwasm::{TerraMsgWrapper, TerraQuerier};
 
@@ -388,7 +386,7 @@ fn query_validators_aprs_by_interval(
     }
     let validators = STATE.load(deps.storage)?.validators;
 
-    let total_validators: u64 = validators.len().try_into().unwrap();
+    let total_validators: u64 = validators.len() as u64;
 
     if to.ge(&total_validators) || from > to {
         return Err(StdError::GenericErr {
@@ -844,7 +842,7 @@ fn get_validators_to_record(
     let state = STATE.load(storage)?;
     let last_cron_time_opt = state.cron_timestamps.last();
     let validators = state.validators;
-    let total_validators: u64 = validators.len().try_into().unwrap();
+    let total_validators: u64 = validators.len() as u64;
     let mut validator_index_for_next_cron = state.validator_index_for_next_cron;
 
     // If the Cron time is completely New (Update State)
@@ -985,7 +983,7 @@ fn query_validators_metrics_by_timestamp(
         validator_operator_addr.push(validator_addr_info.operator_address.clone());
     }
 
-    let total_validators: u64 = validator_operator_addr.len().try_into().unwrap();
+    let total_validators: u64 = validator_operator_addr.len() as u64;
 
     if to.ge(&total_validators) || from > to {
         return Err(StdError::GenericErr {
