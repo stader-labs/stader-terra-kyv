@@ -30,7 +30,7 @@ pub struct OffchainTimestampMetaData {
 pub struct ConversionRatio {
     pub denomination: String,
     // instead of a Decimal for json serialize / deserialize issues.
-    pub multiplier: f64
+    pub multiplier: Decimal
 }
 
 // luna to usd
@@ -41,7 +41,7 @@ pub struct ConversionRatio {
 pub struct OffChainValidatorMetrics {
     pub validator_idx: u16,
     pub opr_address: Addr,
-    pub apr: f64,
+    pub apr: Decimal,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

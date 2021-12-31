@@ -221,6 +221,90 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_off_chain_validator_metrics"
+      ],
+      "properties": {
+        "get_off_chain_validator_metrics": {
+          "type": "object",
+          "required": [
+            "timestamp",
+            "validator_addr"
+          ],
+          "properties": {
+            "timestamp": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "validator_addr": {
+              "$ref": "#/definitions/Addr"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_off_chain_state"
+      ],
+      "properties": {
+        "get_off_chain_state": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_off_chain_metrics_timestamps"
+      ],
+      "properties": {
+        "get_off_chain_metrics_timestamps": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_off_chain_timestamp_meta_data"
+      ],
+      "properties": {
+        "get_off_chain_timestamp_meta_data": {
+          "type": "object",
+          "required": [
+            "timestamp"
+          ],
+          "properties": {
+            "timestamp": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_off_chain_validators"
+      ],
+      "properties": {
+        "get_off_chain_validators": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {
