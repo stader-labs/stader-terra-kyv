@@ -1635,7 +1635,7 @@ mod tests {
             conversion_ratios_to_luna: vec![
                 (ConversionRatio {
                     denomination: "".to_string(),
-                    multiplier: Decimal::percent(156),
+                    multiplier: "156.00".to_string(),
                 }),
             ],
         }
@@ -1649,7 +1649,7 @@ mod tests {
         OffChainValidatorMetrics {
             validator_idx: 0,
             opr_address: Addr::unchecked(TEST_VALIDATOR_OPR_ADDR),
-            apr: Decimal::percent(110),
+            apr: "110.00".to_string(),
         }
     }
 }
