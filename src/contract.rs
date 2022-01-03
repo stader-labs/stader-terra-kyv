@@ -1016,10 +1016,10 @@ fn add_off_chain_validator(
     let next_validator_idx = off_chain_state.next_validator_idx;
     OFF_CHAIN_VALIDATOR_IDX_MAPPING.save(deps.storage, &validator_addr, &next_validator_idx);
 
-    OFF_CHAIN_STATE.update(deps.storage, |mut s| -> StdResult<_> {
-        s.next_validator_idx = next_validator_idx + 1;
-        Ok(s)
+    OFF_CHAIN_STATE.save(deps.storage, &OffChainState {
+        next_validator_idx: next_validator_idx + 1
     });
+
 
     Ok(Response::new()
         .add_attribute("validator_idx", next_validator_idx.to_string())
