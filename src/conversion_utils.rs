@@ -30,39 +30,39 @@ pub(crate) fn addr_from_vec_u8(vector: Vec<u8>) -> Addr {
 
 #[cfg(test)]
 mod tests {
-    // use crate::conversion_utils::{addr_from_vec_u8, u64_from_vec_u8};
-    // use cosmwasm_std::Addr;
-    //
-    // #[test]
-    // pub fn simple_test_0_0() {
-    //     let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 0, 0, 0, 0]);
-    //     assert_eq!(0, actual_result);
-    // }
-    // #[test]
-    // pub fn simple_test_10_10() {
-    //     let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 0, 0, 0, 10]);
-    //     assert_eq!(10, actual_result);
-    // }
-    // #[test]
-    // pub fn simple_test_1234_67305985() {
-    //     let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 4, 3, 2, 1]);
-    //     assert_eq!(67305985, actual_result);
-    // }
-    //
-    // #[test]
-    // pub fn simple_test_0_0_0_0_0_0_1_134_160_to_100000() {
-    //     let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 0, 1, 134, 160]);
-    //     let expected: u64 = 100000;
-    //
-    //     assert_eq!(actual_result, expected);
-    // }
-    //
-    // #[test]
-    // pub fn address_test() {
-    //     let input = vec![b't', b'e', b's', b't'];
-    //     let expected = Addr::unchecked("test");
-    //     let actual = addr_from_vec_u8(input);
-    //
-    //     assert_eq!(actual, expected);
-    // }
+    use crate::conversion_utils::{addr_from_vec_u8, u64_from_vec_u8};
+    use cosmwasm_std::Addr;
+
+    #[test]
+    pub fn simple_test_0_0() {
+        let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(0, actual_result);
+    }
+    #[test]
+    pub fn simple_test_10_10() {
+        let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 0, 0, 0, 10]);
+        assert_eq!(10, actual_result);
+    }
+    #[test]
+    pub fn simple_test_1234_67305985() {
+        let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 4, 3, 2, 1]);
+        assert_eq!(67305985, actual_result);
+    }
+
+    #[test]
+    pub fn simple_test_0_0_0_0_0_0_1_134_160_to_100000() {
+        let actual_result = u64_from_vec_u8(vec![0, 0, 0, 0, 0, 1, 134, 160]);
+        let expected: u64 = 100000;
+
+        assert_eq!(actual_result, expected);
+    }
+
+    #[test]
+    pub fn address_test() {
+        let input = vec![b't', b'e', b's', b't'];
+        let expected = Addr::unchecked("test");
+        let actual = addr_from_vec_u8(input);
+
+        assert_eq!(actual, expected);
+    }
 }
