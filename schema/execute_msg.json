@@ -213,7 +213,7 @@
           "properties": {
             "no_of_validators_to_remove": {
               "type": "integer",
-              "format": "uint",
+              "format": "uint16",
               "minimum": 0.0
             },
             "timestamp": {

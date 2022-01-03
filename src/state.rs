@@ -2,7 +2,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::constants;
-use crate::msg::{OffChainTimestamps, OffChainValidatorMetrics, OffchainTimestampMetaData};
 use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
 use cw_storage_plus::{Item, Map, U16Key, U64Key};
 
@@ -47,6 +46,29 @@ pub struct ValidatorMetrics {
     pub max_commission: Decimal,
     pub timestamp: u64,
     pub rewards_in_coins: Vec<Coin>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffchainTimestampMetaData {
+    pub timestamp: u64,
+    pub conversion_ratios_to_luna: Vec<ConversionRatio>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ConversionRatio {
+    pub denomination: String,
+    // instead of a Decimal for json serialize / deserialize issues.
+    pub multiplier: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainValidatorMetrics {
+    pub validator_idx: u16,
+    pub opr_address: Addr,
+    pub apr: String,
 }
 
 // (Validator Addr, Timestamp)

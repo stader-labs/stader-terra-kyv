@@ -1,47 +1,13 @@
 use cosmwasm_std::{Addr, Decimal, Uint128};
-use cw_storage_plus::U64Key;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use crate::state::{OffchainTimestampMetaData, OffChainValidatorMetrics};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
     pub vault_denom: String,
     pub amount_to_stake_per_validator: Uint128,
     pub batch_size: u64,
-}
-
-/*
- - timestamp at which apr comp
- - validator address for which recorded
- - the avg luna price that we have used
-   - since the last run
- - actual apr that we have computed
-*/
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub struct OffchainTimestampMetaData {
-    pub timestamp: u64,
-    pub conversion_ratios_to_luna: Vec<ConversionRatio>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub struct ConversionRatio {
-    pub denomination: String,
-    // instead of a Decimal for json serialize / deserialize issues.
-    pub multiplier: String,
-}
-
-// luna to usd
-// other currencies to luna
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub struct OffChainValidatorMetrics {
-    pub validator_idx: u16,
-    pub opr_address: Addr,
-    pub apr: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -78,7 +44,7 @@ pub enum ExecuteMsg {
     },
     RemoveOffChainMetricsForTimestamp {
         timestamp: u64,
-        no_of_validators_to_remove: usize,
+        no_of_validators_to_remove: u16,
     },
     OffChainAddValidator {
         oper_addr: Addr,
@@ -138,7 +104,7 @@ pub enum QueryMsg {
     },
     GetOffChainValidators {},
 }
-//Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct MigrateMsg {
     pub manager_address: Addr,
