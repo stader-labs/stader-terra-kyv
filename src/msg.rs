@@ -1,7 +1,7 @@
+use crate::state::{OffChainValidatorMetrics, OffchainTimestampMetaData};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::state::{OffchainTimestampMetaData, OffChainValidatorMetrics};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {

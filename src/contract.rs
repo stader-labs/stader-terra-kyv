@@ -1,8 +1,15 @@
 use crate::conversion_utils;
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidators, QueryMsg, ValidatorAprResponse};
-use crate::state::{Config, State, ValidatorMetrics, CONFIG, METRICS_HISTORY, STATE, OFF_CHAIN_TIMESTAMPS, OffChainValidatorMetrics, OFF_CHAIN_VALIDATOR_IDX_MAPPING, OFF_CHAIN_STATE_FOR_VALIDATOR, OffchainTimestampMetaData, OFF_CHAIN_TIMESTAMP_META_DATA, OffChainState, OFF_CHAIN_STATE};
-use crate::state::{ValidatorAccounts};
+use crate::msg::{
+    ExecuteMsg, InstantiateMsg, MigrateMsg, OffChainTimestamps, OffChainValidators, QueryMsg,
+    ValidatorAprResponse,
+};
+use crate::state::ValidatorAccounts;
+use crate::state::{
+    Config, OffChainState, OffChainValidatorMetrics, OffchainTimestampMetaData, State,
+    ValidatorMetrics, CONFIG, METRICS_HISTORY, OFF_CHAIN_STATE, OFF_CHAIN_STATE_FOR_VALIDATOR,
+    OFF_CHAIN_TIMESTAMPS, OFF_CHAIN_TIMESTAMP_META_DATA, OFF_CHAIN_VALIDATOR_IDX_MAPPING, STATE,
+};
 use crate::util::{
     compute_apr, decimal_division_in_256, decimal_multiplication_in_256, decimal_summation_in_256,
     uint128_to_decimal,
@@ -990,11 +997,11 @@ fn save_off_chain_details(
     }
 
     OFF_CHAIN_TIMESTAMP_META_DATA.save(deps.storage, U64Key::from(timestamp), &details)?;
-    OFF_CHAIN_TIMESTAMPS.save(deps.storage, U64Key::from(timestamp), &true);
+    OFF_CHAIN_TIMESTAMPS.save(deps.storage, U64Key::from(timestamp), &true)?;
 
-    return Ok(Response::new()
+    Ok(Response::new()
         .add_attribute("method", "save_off_chain_details")
-        .add_attribute("status", "Ok"));
+        .add_attribute("status", "Ok"))
 }
 
 fn add_off_chain_validator(
@@ -1014,12 +1021,14 @@ fn add_off_chain_validator(
         return Err(ContractError::ValidatorAlreadyExists {});
     }
     let next_validator_idx = off_chain_state.next_validator_idx;
-    OFF_CHAIN_VALIDATOR_IDX_MAPPING.save(deps.storage, &validator_addr, &next_validator_idx);
+    OFF_CHAIN_VALIDATOR_IDX_MAPPING.save(deps.storage, &validator_addr, &next_validator_idx)?;
 
-    OFF_CHAIN_STATE.save(deps.storage, &OffChainState {
-        next_validator_idx: next_validator_idx + 1
-    });
-
+    OFF_CHAIN_STATE.save(
+        deps.storage,
+        &OffChainState {
+            next_validator_idx: next_validator_idx + 1,
+        },
+    )?;
 
     Ok(Response::new()
         .add_attribute("validator_idx", next_validator_idx.to_string())
@@ -1047,7 +1056,7 @@ fn remove_off_chain_metrics_for_timestamp(
             .prefix(U64Key::from(timestamp))
             .range(deps.storage, Option::None, Option::None, Order::Ascending)
             .take(no_of_validators_to_remove as usize)
-            .map(|item| return item.unwrap().1.validator_idx)
+            .map(|item| item.unwrap().1.validator_idx)
             .collect();
 
         validators_removed = validator_idxs_to_remove.len();
@@ -1105,7 +1114,7 @@ fn add_off_chain_validator_metrics(
             deps.storage,
             (U64Key::from(timestamp), U16Key::from(validator_idx)),
             &validator_metric,
-        );
+        )?;
     }
 
     Ok(Response::new()
@@ -1124,13 +1133,10 @@ fn off_chain_metrics_exists(deps: &DepsMut, timestamp: u64, validator_idx: u16) 
 }
 
 fn get_off_chain_metrics_timestamps(deps: Deps) -> StdResult<OffChainTimestamps> {
-    let keys: Vec<Vec<u8>> = OFF_CHAIN_TIMESTAMPS
+    let off_chain_timestamps: Vec<u64> = OFF_CHAIN_TIMESTAMPS
         .keys(deps.storage, Option::None, Option::None, Order::Ascending)
-        .collect();
-
-    let off_chain_timestamps: Vec<u64> = keys
         .into_iter()
-        .map(|item| conversion_utils::u64_from_vec_u8(item))
+        .map(conversion_utils::u64_from_vec_u8)
         .collect();
 
     Ok(OffChainTimestamps {
@@ -1144,9 +1150,6 @@ fn get_off_chain_metrics(
     validator_addr: Addr,
 ) -> StdResult<OffChainValidatorMetrics> {
     let validator_idx = OFF_CHAIN_VALIDATOR_IDX_MAPPING.load(deps.storage, &validator_addr)?;
-    let keys: Vec<Vec<u8>> = OFF_CHAIN_STATE_FOR_VALIDATOR
-        .keys(deps.storage, Option::None, Option::None, Order::Ascending)
-        .collect();
     let off_chain_state = OFF_CHAIN_STATE_FOR_VALIDATOR.load(
         deps.storage,
         (U64Key::from(timestamp), U16Key::from(validator_idx)),
@@ -1155,13 +1158,9 @@ fn get_off_chain_metrics(
 }
 
 fn get_off_chain_validators(deps: Deps) -> StdResult<OffChainValidators> {
-    let keys: Vec<Vec<u8>> = OFF_CHAIN_VALIDATOR_IDX_MAPPING
+    let off_chain_validator_addresses: Vec<Addr> = OFF_CHAIN_VALIDATOR_IDX_MAPPING
         .keys(deps.storage, Option::None, Option::None, Order::Ascending)
-        .collect();
-
-    let off_chain_validator_addresses: Vec<Addr> = keys
-        .into_iter()
-        .map(|item| conversion_utils::addr_from_vec_u8(item))
+        .map(conversion_utils::addr_from_vec_u8)
         .collect();
 
     Ok(OffChainValidators {
@@ -1183,16 +1182,15 @@ fn get_off_chain_state(deps: Deps) -> StdResult<OffChainState> {
     Ok(off_chain_state)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::constants::OFF_CHAIN_METRICS_FOR_VALIDATOR;
+    use crate::state::ConversionRatio;
     use cosmwasm_std::testing::{
         mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage,
     };
     use cosmwasm_std::{coins, OwnedDeps, Uint128};
-    use crate::state::ConversionRatio;
 
     const TEST_VALIDATOR_OPR_ADDR: &str = "valid0001";
     const TEST_VALIDATOR_ACC_ADDR: &str = "validacc001";
