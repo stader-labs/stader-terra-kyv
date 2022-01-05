@@ -1,6 +1,7 @@
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use crate::state::{OffchainTimestampMetaData, OffChainValidatorMetrics};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -39,8 +40,23 @@ pub enum ExecuteMsg {
         timestamp_ct: u64,
     },
     RemoveTimestamp {
-        timestamp: u64
-    }
+        timestamp: u64,
+    },
+    RemoveOffChainMetricsForTimestamp {
+        timestamp: u64,
+        no_of_validators_to_remove: u16,
+    },
+    OffChainAddValidator {
+        oper_addr: Addr,
+    },
+    OffChainRecordTimestampMetaData {
+        timestamp: u64,
+        timestamp_meta_data: OffchainTimestampMetaData,
+    },
+    OffChainAddValidatorMetricsForTimestamp {
+        timestamp: u64,
+        validator_metrics: Vec<OffChainValidatorMetrics>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -77,11 +93,21 @@ pub enum QueryMsg {
         timestamp2: u64,
         addr: Addr,
     },
+    GetOffChainValidatorMetrics {
+        timestamp: u64,
+        validator_addr: Addr,
+    },
+    GetOffChainState {},
+    GetOffChainMetricsTimestamps {},
+    GetOffChainTimestampMetaData {
+        timestamp: u64,
+    },
+    GetOffChainValidators {},
 }
-//Can you also add a migrate message to this contract with the msg taking in a manager address to be updated?
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct MigrateMsg {
-    pub manager_address: Addr
+    pub manager_address: Addr,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -89,4 +115,16 @@ pub struct MigrateMsg {
 pub struct ValidatorAprResponse {
     pub addr: Addr,
     pub apr: Decimal,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainTimestamps {
+    pub timestamps: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainValidators {
+    pub validator_addresses: Vec<Addr>,
 }

@@ -185,13 +185,116 @@
         "remove_timestamp": {
           "type": "object",
           "required": [
-            "timestamp_idx"
+            "timestamp"
           ],
           "properties": {
-            "timestamp_idx": {
+            "timestamp": {
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "remove_off_chain_metrics_for_timestamp"
+      ],
+      "properties": {
+        "remove_off_chain_metrics_for_timestamp": {
+          "type": "object",
+          "required": [
+            "no_of_validators_to_remove",
+            "timestamp"
+          ],
+          "properties": {
+            "no_of_validators_to_remove": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "timestamp": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "off_chain_add_validator"
+      ],
+      "properties": {
+        "off_chain_add_validator": {
+          "type": "object",
+          "required": [
+            "oper_addr"
+          ],
+          "properties": {
+            "oper_addr": {
+              "$ref": "#/definitions/Addr"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "off_chain_record_timestamp_meta_data"
+      ],
+      "properties": {
+        "off_chain_record_timestamp_meta_data": {
+          "type": "object",
+          "required": [
+            "timestamp",
+            "timestamp_meta_data"
+          ],
+          "properties": {
+            "timestamp": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "timestamp_meta_data": {
+              "$ref": "#/definitions/OffchainTimestampMetaData"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "off_chain_add_validator_metrics_for_timestamp"
+      ],
+      "properties": {
+        "off_chain_add_validator_metrics_for_timestamp": {
+          "type": "object",
+          "required": [
+            "timestamp",
+            "validator_metrics"
+          ],
+          "properties": {
+            "timestamp": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "validator_metrics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/OffChainValidatorMetrics"
+              }
             }
           }
         }
@@ -203,6 +306,62 @@
     "Addr": {
       "description": "A human readable address.\n\nIn Cosmos, this is typically bech32 encoded. But for multi-chain smart contracts no assumptions should be made other than being UTF-8 encoded and of reasonable length.\n\nThis type represents a validated address. It can be created in the following ways 1. Use `Addr::unchecked(input)` 2. Use `let checked: Addr = deps.api.addr_validate(input)?` 3. Use `let checked: Addr = deps.api.addr_humanize(canonical_addr)?` 4. Deserialize from JSON. This must only be done from JSON that was validated before such as a contract's state. `Addr` must not be used in messages sent by the user because this would result in unvalidated instances.\n\nThis type is immutable. If you really need to mutate it (Really? Are you sure?), create a mutable copy using `let mut mutable = Addr::to_string()` and operate on that `String` instance.",
       "type": "string"
+    },
+    "ConversionRatio": {
+      "type": "object",
+      "required": [
+        "denomination",
+        "multiplier"
+      ],
+      "properties": {
+        "denomination": {
+          "type": "string"
+        },
+        "multiplier": {
+          "type": "string"
+        }
+      }
+    },
+    "OffChainValidatorMetrics": {
+      "type": "object",
+      "required": [
+        "apr",
+        "opr_address",
+        "validator_idx"
+      ],
+      "properties": {
+        "apr": {
+          "type": "string"
+        },
+        "opr_address": {
+          "$ref": "#/definitions/Addr"
+        },
+        "validator_idx": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "OffchainTimestampMetaData": {
+      "type": "object",
+      "required": [
+        "conversion_ratios_to_luna",
+        "timestamp"
+      ],
+      "properties": {
+        "conversion_ratios_to_luna": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConversionRatio"
+          }
+        },
+        "timestamp": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
     },
     "Uint128": {
       "description": "A thin wrapper around u128 that is using strings for JSON encoding/decoding, such that the full u128 range can be used for clients that convert JSON numbers to floats, like JavaScript and jq.\n\n# Examples\n\nUse `from` to create instances of this and `u128` to get the value out:\n\n``` # use cosmwasm_std::Uint128; let a = Uint128::from(123u128); assert_eq!(a.u128(), 123);\n\nlet b = Uint128::from(42u64); assert_eq!(b.u128(), 42);\n\nlet c = Uint128::from(70u32); assert_eq!(c.u128(), 70); ```",

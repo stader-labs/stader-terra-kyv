@@ -43,5 +43,11 @@ pub enum ContractError {
     InvalidTimestamp {},
 
     #[error("Timestamp is within existing timestamps range")]
-    TimestampWithinExistingRange{}
+    TimestampWithinExistingRange {},
+
+    #[error("Metrics for this validator has already been recorded for this timestamp")]
+    OffChainMetricsAlreadyRecorded,
+
+    #[error("Details for timestamp already recorded")]
+    OffChainDetailsAlreadyRecorded,
 }

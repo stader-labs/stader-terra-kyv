@@ -1,8 +1,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::constants;
 use cosmwasm_std::{Addr, Coin, Decimal, Uint128};
-use cw_storage_plus::{Item, Map, U64Key};
+use cw_storage_plus::{Item, Map, U16Key, U64Key};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
@@ -13,7 +14,12 @@ pub struct State {
     pub validators: Vec<ValidatorAccounts>,
     //hard to remove from this, costs O(T) time, if was a set, could be O(1) average time
     pub cron_timestamps: Vec<u64>,
-    pub validator_index_for_next_cron: u64
+    pub validator_index_for_next_cron: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct OffChainState {
+    pub next_validator_idx: u16,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -42,6 +48,29 @@ pub struct ValidatorMetrics {
     pub rewards_in_coins: Vec<Coin>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffchainTimestampMetaData {
+    pub timestamp: u64,
+    pub conversion_ratios_to_luna: Vec<ConversionRatio>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ConversionRatio {
+    pub denomination: String,
+    // instead of a Decimal for json serialize / deserialize issues.
+    pub multiplier: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OffChainValidatorMetrics {
+    pub validator_idx: u16,
+    pub opr_address: Addr,
+    pub apr: String,
+}
+
 // (Validator Addr, Timestamp)
 pub const METRICS_HISTORY: Map<(&Addr, U64Key), ValidatorMetrics> =
     Map::new("validator_metrics_history");
@@ -50,4 +79,17 @@ pub const STATE: Item<State> = Item::new("state");
 
 pub const CONFIG: Item<Config> = Item::new("config");
 
-// pub exchange_rates: Vec<(String, Decimal)>, // FOR TESTING - REMOVE THIS
+// off chain details
+
+pub const OFF_CHAIN_STATE: Item<OffChainState> = Item::new(constants::OFF_CHAIN_STATE);
+
+pub const OFF_CHAIN_VALIDATOR_IDX_MAPPING: Map<&Addr, u16> =
+    Map::new(constants::OFF_CHAIN_VALIDATOR_IDX_MAPPING);
+
+pub const OFF_CHAIN_TIMESTAMP_META_DATA: Map<U64Key, OffchainTimestampMetaData> =
+    Map::new(constants::OFFCHAIN_TIMESTAMP_DETAILS);
+
+pub const OFF_CHAIN_STATE_FOR_VALIDATOR: Map<(U64Key, U16Key), OffChainValidatorMetrics> =
+    Map::new(constants::OFF_CHAIN_METRICS_FOR_VALIDATOR);
+
+pub const OFF_CHAIN_TIMESTAMPS: Map<U64Key, bool> = Map::new("off_chain_timestamps");
